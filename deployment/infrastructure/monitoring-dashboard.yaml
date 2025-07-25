@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Comprehensive monitoring dashboard for Claude Code with user token tracking and cost analysis'
+Description: '( SO9610 )  Comprehensive monitoring dashboard for Claude Code with user token tracking and cost analysis'
 
 Parameters:
   DashboardName:

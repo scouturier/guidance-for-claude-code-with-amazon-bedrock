@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Cognito User Pool setup for Claude Code authentication - supports external OIDC providers like Amazon Federate/Midway'
+Description: '( SO9610 )  Cognito User Pool setup for Claude Code authentication - supports external OIDC providers like Amazon Federate/Midway'
 
 Parameters:
   UserPoolName:

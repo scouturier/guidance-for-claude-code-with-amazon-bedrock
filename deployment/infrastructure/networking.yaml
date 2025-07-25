@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Networking infrastructure for Claude Code OTEL collector - VPC, subnets, and routing'
+Description: '( SO9610 )  Networking infrastructure for Claude Code OTEL collector - VPC, subnets, and routing'
 
 Parameters:
   VpcCidr:

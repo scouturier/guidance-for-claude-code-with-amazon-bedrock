@@ -1,6 +1,6 @@
 # Guidance for Claude Code with Amazon Bedrock
 
-This solution enables organizations to provide secure, centralized access to Claude models through Amazon Bedrock using existing enterprise identity providers. By integrating with OIDC providers like Okta, Azure AD, and Auth0, organizations can maintain their current authentication workflows while giving users seamless access to Claude Code without managing individual API keys.
+This guidance enables organizations to provide secure, centralized access to Claude models through Amazon Bedrock using existing enterprise identity providers. By integrating with OIDC providers like Okta, Azure AD, and Auth0, organizations can maintain their current authentication workflows while giving users seamless access to Claude Code without managing individual API keys.
 
 ## Key Features
 
@@ -42,7 +42,7 @@ See [Prerequisites](#prerequisites) including setting up [supported OIDC provide
 
 ### Getting started
 
-1. Deploy solution resources to your AWS account by executing the commands below.
+1. Deploy guidance resources to your AWS account by executing the commands below.
 
 ```bash
 # Clone the repository
@@ -73,7 +73,7 @@ poetry run ccwb test
 
 ### Cleanup
 
-You are responsible for the [costs](#cost) of AWS services while running this solution. If you decide that you no longer need the solution, please ensure that infrastructure resources are removed.
+You are responsible for the [costs](#cost) of AWS services while running this guidance. If you decide that you no longer need the guidance, please ensure that infrastructure resources are removed.
 
 ```
 poetry run ccwb destroy
@@ -81,7 +81,7 @@ poetry run ccwb destroy
 
 ## How it works
 
-This solution implements an Enterprise Authentication Pattern that enables organizations to securely integrate Claude Code with their existing identity infrastructure. The pattern provides:
+This guidance implements an Enterprise Authentication Pattern that enables organizations to securely integrate Claude Code with their existing identity infrastructure. The pattern provides:
 
 - **OIDC Identity Provider Integration**: Seamless authentication through Okta, Azure AD, Auth0, and other OIDC-compliant providers
 - **Temporary AWS Credentials**: Eliminates long-lived credentials by providing session-based access to Amazon Bedrock
@@ -113,11 +113,11 @@ Step-by-step flow for end-users:
 
 ### Cost
 
-_You are responsible for the cost of the AWS services used while running this solution._
+_You are responsible for the cost of the AWS services used while running this guidance._
 
 ### Sample Cost Table
 
-The following table provides a sample cost breakdown for deploying this solution with 5,000 monthly active users in the US East (N. Virginia) Region for one month (monitoring is separate).
+The following table provides a sample cost breakdown for deploying this guidance with 5,000 monthly active users in the US East (N. Virginia) Region for one month (monitoring is separate).
 
 | AWS service            | Dimensions                 | Cost [USD] |
 | ---------------------- | -------------------------- | ---------- |
@@ -163,7 +163,7 @@ Based on AWS Pricing Calculator: [View Detailed Estimate](https://calculator.aws
 
 ### Supported AWS Regions
 
-The solution can be deployed in any AWS region that supports:
+The guidance can be deployed in any AWS region that supports:
 
 - Amazon Cognito Identity Pools
 - Amazon Bedrock
@@ -326,7 +326,7 @@ The optional CloudWatch dashboard provides:
 
 ## CLI Commands
 
-The solution includes a comprehensive CLI tool (`ccwb`) for deployment and management:
+The guidance includes a comprehensive CLI tool (`ccwb`) for deployment and management:
 
 - `ccwb init` - Interactive setup wizard for initial configuration
 - `ccwb deploy` - Deploy AWS infrastructure (CloudFormation stacks)
@@ -346,7 +346,7 @@ The solution includes a comprehensive CLI tool (`ccwb`) for deployment and manag
 **Architecture & Deployment:**
 - [Architecture Guide](/assets/docs/ARCHITECTURE.md) - System architecture and design decisions
 - [Deployment Guide](/assets/docs/DEPLOYMENT.md) - Detailed deployment instructions and options
-- [Local Testing Guide](/assets/docs/LOCAL_TESTING.md) - Testing the solution locally before deployment
+- [Local Testing Guide](/assets/docs/LOCAL_TESTING.md) - Testing the guidance locally before deployment
 
 **Monitoring & Analytics:**
 - [Monitoring and Telemetry Guide](/assets/docs/MONITORING.md) - Guide to deploying and using Claude Code Telemetry with OpenTelemetry

@@ -2,7 +2,7 @@
 # ABOUTME: It streams CloudWatch Logs to S3 in Parquet format and sets up Athena for querying user metrics
 
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Analytics pipeline for Claude Code metrics using Kinesis Firehose and Athena'
+Description: '( SO9610 ) Analytics pipeline for Claude Code metrics using Kinesis Firehose and Athena'
 
 Parameters:
   MetricsLogGroup:

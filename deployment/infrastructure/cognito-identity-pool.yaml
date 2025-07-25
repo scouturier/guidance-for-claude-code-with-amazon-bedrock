@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Flexible Cognito Identity Pool supporting both external OIDC providers and Cognito User Pools'
+Description: '( SO9610 ) Flexible Cognito Identity Pool supporting both external OIDC providers and Cognito User Pools'
 
 Parameters:
   AuthProviderType:
