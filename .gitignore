@@ -1,0 +1,52 @@
+.DS_Store
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+*.spec
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.log
+
+# AWS credentials (safety)
+.aws/credentials
+.aws/config
+
+# Local environment files
+.env
+.env.local
+
+# Claude Code settings
+.claude/
+
+# Temporary test files
+output.json
+*.bak
+test_*.py
+
+CLAUDE.md
+
+guidance-docs/
+parameters.json
+
+# ccwb deployment config
+source/.ccwb-config/
+
+guidance-submission/
+tests/

@@ -1,215 +1,371 @@
-# Guidance Title (required)
+# Guidance for Claude Code with Amazon Bedrock
 
-The Guidance title should be consistent with the title established first in Alchemy.
+This solution enables organizations to provide secure, centralized access to Claude models through Amazon Bedrock using existing enterprise identity providers. By integrating with OIDC providers like Okta, Azure AD, and Auth0, organizations can maintain their current authentication workflows while giving users seamless access to Claude Code without managing individual API keys.
 
-**Example:** *Guidance for Product Substitutions on AWS*
+## Key Features
 
-This title correlates exactly to the Guidance it’s linked to, including its corresponding sample code repository. 
+### For Organizations
 
+- **Enterprise SSO Integration**: Leverage existing OIDC identity providers (Okta, Azure AD, Auth0, etc.)
+- **Centralized Access Control**: Manage Claude Code access through your identity provider
+- **No API Key Management**: Eliminate the need to distribute or rotate long-lived credentials
+- **Comprehensive Audit Trail**: Full CloudTrail logging of all Bedrock access
+- **Usage Monitoring**: Optional CloudWatch dashboards for tracking usage and costs
+- **Multi-Region Support**: Configure which AWS regions users can access Bedrock in
 
-## Table of Contents (required)
+### For End Users
 
-List the top-level sections of the README template, along with a hyperlink to the specific section.
+- **Seamless Authentication**: Log in with corporate credentials
+- **Automatic Credential Refresh**: No manual token management required
+- **AWS CLI/SDK Integration**: Works with any AWS tool or SDK
+- **Secure Credential Storage**: Choice of OS keyring or session-based storage
+- **Multi-Profile Support**: Manage multiple authentication profiles
 
-### Required
+## Table of Contents
 
-1. [Overview](#overview-required)
-    - [Cost](#cost)
-2. [Prerequisites](#prerequisites-required)
-    - [Operating System](#operating-system-required)
-3. [Deployment Steps](#deployment-steps-required)
-4. [Deployment Validation](#deployment-validation-required)
-5. [Running the Guidance](#running-the-guidance-required)
-6. [Next Steps](#next-steps-required)
-7. [Cleanup](#cleanup-required)
+1. [Quick Start](#quick-start)
+2. [Enterprise Authentication Pattern](#enterprise-authentication-pattern)
+3. [Architecture Overview](#architecture-overview)
+4. [Prerequisites](#prerequisites)
+5. [Implementation](#implementation)
+6. [End User Experience](#end-user-experience)
+7. [Monitoring and Operations](#monitoring-and-operations)
+8. [Best Practices](#best-practices)
+9. [CLI Commands](#cli-commands)
+10. [Additional Resources](#additional-resources)
 
-***Optional***
+## Quick Start
 
-8. [FAQ, known issues, additional considerations, and limitations](#faq-known-issues-additional-considerations-and-limitations-optional)
-9. [Revisions](#revisions-optional)
-10. [Notices](#notices-optional)
-11. [Authors](#authors-optional)
+### Prerequisites
 
-## Overview (required)
+See [Prerequisites](#prerequisites) including setting up [supported OIDC providers](#supported-oidc-providers).
 
-1. Provide a brief overview explaining the what, why, or how of your Guidance. You can answer any one of the following to help you write this:
+### Getting started
 
-    - **Why did you build this Guidance?**
-    - **What problem does this Guidance solve?**
+1. Deploy solution resources to your AWS account by executing the commands below.
 
-2. Include the architecture diagram image, as well as the steps explaining the high-level overview and flow of the architecture. 
-    - To add a screenshot, create an ‘assets/images’ folder in your repository and upload your screenshot to it. Then, using the relative file path, add it to your README. 
+```bash
+# Clone the repository
+git clone https://github.com/aws-solutions-library-samples/guidance-for-claude-code-with-amazon-bedrock
+cd guidance-for-claude-code-with-amazon-bedrock/source
 
-### Cost ( required )
+# Install dependencies
+poetry install
 
-This section is for a high-level cost estimate. Think of a likely straightforward scenario with reasonable assumptions based on the problem the Guidance is trying to solve. Provide an in-depth cost breakdown table in this section below ( you should use AWS Pricing Calculator to generate cost breakdown ).
+# Run interactive setup wizard
+poetry run ccwb init
 
-Start this section with the following boilerplate text:
+# Deploy infrastructure
+poetry run ccwb deploy
 
-_You are responsible for the cost of the AWS services used while running this Guidance. As of <month> <year>, the cost for running this Guidance with the default settings in the <Default AWS Region (Most likely will be US East (N. Virginia)) > is approximately $<n.nn> per month for processing ( <nnnnn> records )._
+# Create distribution package for users
+poetry run ccwb package
+```
 
-Replace this amount with the approximate cost for running your Guidance in the default Region. This estimate should be per month and for processing/serving resonable number of requests/entities.
+2. Test package locally to verify end-user installation and access to Amazon Bedrock.
 
-Suggest you keep this boilerplate text:
-_We recommend creating a [Budget](https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-managing-costs.html) through [AWS Cost Explorer](https://aws.amazon.com/aws-cost-management/aws-cost-explorer/) to help manage costs. Prices are subject to change. For full details, refer to the pricing webpage for each AWS service used in this Guidance._
+```
+# Test package locally
+poetry run ccwb test
+```
 
-### Sample Cost Table ( required )
+3. [Distribute](#end-user-experience) package to end-users.
 
-**Note : Once you have created a sample cost table using AWS Pricing Calculator, copy the cost breakdown to below table and upload a PDF of the cost estimation on BuilderSpace. Do not add the link to the pricing calculator in the ReadMe.**
+### Cleanup
 
-The following table provides a sample cost breakdown for deploying this Guidance with the default parameters in the US East (N. Virginia) Region for one month.
+You are responsible for the [costs](#cost) of AWS services while running this solution. If you decide that you no longer need the solution, please ensure that infrastructure resources are removed.
 
-| AWS service  | Dimensions | Cost [USD] |
-| ----------- | ------------ | ------------ |
-| Amazon API Gateway | 1,000,000 REST API calls per month  | $ 3.50month |
-| Amazon Cognito | 1,000 active users per month without advanced security feature | $ 0.00 |
+```
+poetry run ccwb destroy
+```
 
-## Prerequisites (required)
+## How it works
 
-### Operating System (required)
+This solution implements an Enterprise Authentication Pattern that enables organizations to securely integrate Claude Code with their existing identity infrastructure. The pattern provides:
 
-- Talk about the base Operating System (OS) and environment that can be used to run or deploy this Guidance, such as *Mac, Linux, or Windows*. Include all installable packages or modules required for the deployment. 
-- By default, assume Amazon Linux 2/Amazon Linux 2023 AMI as the base environment. All packages that are not available by default in AMI must be listed out.  Include the specific version number of the package or module.
+- **OIDC Identity Provider Integration**: Seamless authentication through Okta, Azure AD, Auth0, and other OIDC-compliant providers
+- **Temporary AWS Credentials**: Eliminates long-lived credentials by providing session-based access to Amazon Bedrock
+- **Centralized Access Control**: Manage Claude Code access through your existing identity provider groups and policies
+- **Comprehensive Audit Logging**: Full CloudTrail integration for compliance and security monitoring
+- **Optional Usage Monitoring**: CloudWatch dashboards and metrics for tracking Claude Code usage across your organization
 
-**Example:**
-“These deployment instructions are optimized to best work on **<Amazon Linux 2 AMI>**.  Deployment in another OS may require additional steps.”
+Step-by-step flow for end-users:
 
-- Include install commands for packages, if applicable.
+1. Users authenticate with their corporate credentials through your OIDC provider
+2. The OIDC token is exchanged for temporary AWS credentials via Amazon Cognito
+3. Claude Code uses these temporary credentials to access Amazon Bedrock
+4. All access is logged and can be monitored through CloudWatch (if enabled)
 
+## Architecture Overview
 
-### Third-party tools (If applicable)
+![Architecture Diagram](assets/images/credential-flow-diagram.png)
 
-*List any installable third-party tools required for deployment.*
+### Authentication Flow
 
+1. **User initiates authentication**: User requests access to Amazon Bedrock through Claude Code
+2. **OIDC authentication**: User authenticates with their OIDC provider and receives an ID token
+3. **Token submission to Cognito**: Application sends the OIDC ID token to Amazon Cognito
+4. **Cognito requests AWS credentials**: Cognito exchanges the token with AWS IAM
+5. **IAM returns credentials**: AWS IAM validates and returns temporary AWS credentials
+6. **Cognito returns credentials**: Cognito passes the temporary credentials back to the application
+7. **Access Amazon Bedrock**: Application uses the temporary credentials to call Amazon Bedrock
+8. **Bedrock response**: Amazon Bedrock processes the request and returns the response
 
-### AWS account requirements (If applicable)
+### Cost
 
-*List out pre-requisites required on the AWS account if applicable, this includes enabling AWS regions, requiring ACM certificate.*
+_You are responsible for the cost of the AWS services used while running this solution._
 
-**Example:** “This deployment requires you have public ACM certificate available in your AWS account”
+### Sample Cost Table
 
-**Example resources:**
-- ACM certificate 
-- DNS record
-- S3 bucket
-- VPC
-- IAM role with specific permissions
-- Enabling a Region or service etc.
+The following table provides a sample cost breakdown for deploying this solution with 5,000 monthly active users in the US East (N. Virginia) Region for one month (monitoring is separate).
 
+| AWS service            | Dimensions                 | Cost [USD] |
+| ---------------------- | -------------------------- | ---------- |
+| **Total monthly cost** | 5,000 monthly active users | **$74.25** |
 
-### aws cdk bootstrap (if sample code has aws-cdk)
+Based on AWS Pricing Calculator: [View Detailed Estimate](https://calculator.aws/#/estimate?id=df630701f37a3ab19cae0ebfa75eb33c86d7b31a)
 
-<If using aws-cdk, include steps for account bootstrap for new cdk users.>
+## Prerequisites
 
-**Example blurb:** “This Guidance uses aws-cdk. If you are using aws-cdk for first time, please perform the below bootstrapping....”
+### For Deployment (IT Administrators)
 
-### Service limits  (if applicable)
+**Software Requirements:**
 
-<Talk about any critical service limits that affect the regular functioning of the Guidance. If the Guidance requires service limit increase, include the service name, limit name and link to the service quotas page.>
+- Python 3.8-3.13
+- Poetry (dependency management)
+- AWS CLI v2
+- Git
 
-### Supported Regions (if applicable)
+**AWS Requirements:**
 
-<If the Guidance is built for specific AWS Regions, or if the services used in the Guidance do not support all Regions, please specify the Region this Guidance is best suited for>
+- AWS account with appropriate IAM permissions to create:
+  - CloudFormation stacks
+  - Cognito Identity Pools
+  - IAM roles and policies
+  - (Optional) ECS tasks and CloudWatch dashboards
+- Amazon Bedrock activated in target regions
 
+**OIDC Provider Requirements:**
 
-## Deployment Steps (required)
+- Existing OIDC identity provider (Okta, Azure AD, Auth0, etc.)
+- Ability to create OIDC applications
+- Redirect URI support for `http://localhost:8400/callback`
 
-Deployment steps must be numbered, comprehensive, and usable to customers at any level of AWS expertise. The steps must include the precise commands to run, and describe the action it performs.
+### For End Users
 
-* All steps must be numbered.
-* If the step requires manual actions from the AWS console, include a screenshot if possible.
-* The steps must start with the following command to clone the repo. ```git clone xxxxxxx```
-* If applicable, provide instructions to create the Python virtual environment, and installing the packages using ```requirement.txt```.
-* If applicable, provide instructions to capture the deployed resource ARN or ID using the CLI command (recommended), or console action.
+**Software Requirements:**
 
- 
-**Example:**
+- AWS CLI v2 or any AWS SDK
+- Web browser for authentication
+- macOS, Linux, or Windows operating system
 
-1. Clone the repo using command ```git clone xxxxxxxxxx```
-2. cd to the repo folder ```cd <repo-name>```
-3. Install packages in requirements using command ```pip install requirement.txt```
-4. Edit content of **file-name** and replace **s3-bucket** with the bucket name in your account.
-5. Run this command to deploy the stack ```cdk deploy``` 
-6. Capture the domain name created by running this CLI command ```aws apigateway ............```
+**No AWS account required** - users authenticate through the organization's identity provider and receive temporary credentials.
 
+### Supported AWS Regions
 
+The solution can be deployed in any AWS region that supports:
 
-## Deployment Validation  (required)
+- Amazon Cognito Identity Pools
+- Amazon Bedrock
+- (Optional) Amazon ECS Fargate for monitoring
 
-<Provide steps to validate a successful deployment, such as terminal output, verifying that the resource is created, status of the CloudFormation template, etc.>
+Users can access Bedrock in any region you configure during setup, regardless of where the authentication infrastructure is deployed.
 
+## Implementation
 
-**Examples:**
+### Step 1: Initialize Configuration
 
-* Open CloudFormation console and verify the status of the template with the name starting with xxxxxx.
-* If deployment is successful, you should see an active database instance with the name starting with <xxxxx> in        the RDS console.
-*  Run the following CLI command to validate the deployment: ```aws cloudformation describe xxxxxxxxxxxxx```
+Run the interactive setup wizard:
 
+```bash
+poetry run ccwb init
+```
 
+The wizard will guide you through:
 
-## Running the Guidance (required)
+- OIDC provider configuration (domain, client ID)
+- AWS region selection for infrastructure
+- Amazon Bedrock region access configuration
+- Credential storage method (keyring or session files)
+- Optional monitoring setup with VPC configuration
 
-<Provide instructions to run the Guidance with the sample data or input provided, and interpret the output received.> 
+### Step 2: Deploy Infrastructure
 
-This section should include:
+Deploy the AWS CloudFormation stacks:
 
-* Guidance inputs
-* Commands to run
-* Expected output (provide screenshot if possible)
-* Output description
+```bash
+poetry run ccwb deploy
+```
 
+This creates the following AWS resources:
 
+**Authentication Infrastructure:**
 
-## Next Steps (required)
+- Amazon Cognito Identity Pool for OIDC federation
+- IAM OIDC Provider trust relationship
+- IAM role with policies for:
+  - Bedrock model invocation in specified regions
+  - CloudWatch metrics (if monitoring enabled)
 
-Provide suggestions and recommendations about how customers can modify the parameters and the components of the Guidance to further enhance it according to their requirements.
+**Optional Monitoring Infrastructure:**
 
+- VPC and networking resources (or integration with existing VPC)
+- ECS Fargate cluster running OpenTelemetry collector
+- Application Load Balancer for OTLP ingestion
+- CloudWatch Log Groups and Metrics
+- CloudWatch Dashboard with usage analytics
+- Kinesis Data Firehose for streaming metrics to S3
+- Amazon Athena for SQL analytics on collected metrics
+- S3 bucket for long-term metrics storage
 
-## Cleanup (required)
+### Step 3: Create Distribution Package
 
-- Include detailed instructions, commands, and console actions to delete the deployed Guidance.
-- If the Guidance requires manual deletion of resources, such as the content of an S3 bucket, please specify.
+Build the package for end users:
 
+```bash
+poetry run ccwb package
+```
 
+This creates a `dist/` folder containing:
 
-## FAQ, known issues, additional considerations, and limitations (optional)
+- `credential-process-macos` - Authentication executable for macOS
+- `credential-process-linux` - Authentication executable for Linux
+- `config.json` - Embedded configuration
+- `install.sh` - Installation script (auto-detects platform)
+- `README.md` - User instructions
+- `.claude/settings.json` - Claude Code telemetry settings (if monitoring enabled)
+- `otel-helper-macos` - OTEL helper executable for macOS (if monitoring enabled)
+- `otel-helper-linux` - OTEL helper executable for Linux (if monitoring enabled)
 
+The package builder:
 
-**Known issues (optional)**
+- Automatically builds binaries for both macOS and Linux by default
+- Uses Docker for cross-platform Linux builds when running on macOS
+- Includes the OTEL helper for extracting user attributes from JWT tokens
+- Creates a unified installer that auto-detects the user's platform
 
-<If there are common known issues, or errors that can occur during the Guidance deployment, describe the issue and resolution steps here>
+### Step 4: Test the Setup
 
+Verify everything works correctly:
 
-**Additional considerations (if applicable)**
+```bash
+poetry run ccwb test
+```
 
-<Include considerations the customer must know while using the Guidance, such as anti-patterns, or billing considerations.>
+This will:
 
-**Examples:**
+- Simulate the end-user installation process
+- Test OIDC authentication
+- Verify AWS credential retrieval
+- Check Amazon Bedrock access
+- (Optional) Test actual API calls with `--api` flag
 
-- “This Guidance creates a public AWS bucket required for the use-case.”
-- “This Guidance created an Amazon SageMaker notebook that is billed per hour irrespective of usage.”
-- “This Guidance creates unauthenticated public API endpoints.”
+## End User Experience
 
+### Installation
 
-Provide a link to the *GitHub issues page* for users to provide feedback.
+End users receive the `dist/` folder and run:
 
+```bash
+./install.sh
+```
 
-**Example:** *“For any feedback, questions, or suggestions, please use the issues tab under this repo.”*
+This installs:
 
-## Revisions (optional)
+- Authentication executable at `~/claude-code-with-bedrock/credential-process`
+- Configuration at `~/claude-code-with-bedrock/config.json`
+- AWS profile named `ClaudeCode` with credential process integration
 
-Document all notable changes to this project.
+### Using Claude Code
 
-Consider formatting this section based on Keep a Changelog, and adhering to Semantic Versioning.
+After installation, users can use Claude Code with Amazon Bedrock:
 
-## Notices (optional)
+1. **Install Claude Code** (if not already installed):
 
-Include a legal disclaimer
+   ```bash
+   npm install -g @anthropic-ai/claude-code
+   ```
 
-**Example:**
-*Customers are responsible for making their own independent assessment of the information in this Guidance. This Guidance: (a) is for informational purposes only, (b) represents AWS current product offerings and practices, which are subject to change without notice, and (c) does not create any commitments or assurances from AWS and its affiliates, suppliers or licensors. AWS products or services are provided “as is” without warranties, representations, or conditions of any kind, whether express or implied. AWS responsibilities and liabilities to its customers are controlled by AWS agreements, and this Guidance is not part of, nor does it modify, any agreement between AWS and its customers.*
+2. **Configure environment for Bedrock**:
 
+   ```bash
+   # Set the AWS profile created by the installer
+   export AWS_PROFILE=ClaudeCode
+   ```
 
-## Authors (optional)
+3. **Start Claude Code**:
 
-Name of code contributors
+   ```bash
+   # Navigate to your project directory
+   cd /path/to/your/project
+
+   # Start Claude Code
+   claude
+   ```
+
+Claude Code will automatically use your organization's authentication to access Amazon Bedrock.
+
+### Authentication Process
+
+1. On first use, a browser window opens for OIDC authentication
+2. Users log in with their corporate credentials
+3. Temporary AWS credentials are cached (based on configured storage method)
+4. Subsequent calls use cached credentials until expiration
+5. Automatic re-authentication when credentials expire
+
+## Monitoring and Operations
+
+### Available Metrics (when monitoring is enabled)
+
+The optional CloudWatch dashboard provides:
+
+- **Usage Metrics**: Requests per user, model, and region
+- **Token Consumption**: Input/output tokens with cost estimation
+- **Performance Metrics**: Response times and error rates
+- **User Activity**: Active users and authentication patterns
+
+## CLI Commands
+
+The solution includes a comprehensive CLI tool (`ccwb`) for deployment and management:
+
+- `ccwb init` - Interactive setup wizard for initial configuration
+- `ccwb deploy` - Deploy AWS infrastructure (CloudFormation stacks)
+- `ccwb package` - Build distribution package for end users
+- `ccwb test` - Test authentication and Bedrock access
+- `ccwb status` - Check deployment status and configuration
+- `ccwb destroy` - Remove all deployed infrastructure
+- `ccwb cleanup` - Clean up local configuration files
+
+## Additional Resources
+
+### Documentation
+
+**Getting Started:**
+- [CLI Reference](/assets/docs/CLI_REFERENCE.md) - Complete command reference for the `ccwb` tool
+
+**Architecture & Deployment:**
+- [Architecture Guide](/assets/docs/ARCHITECTURE.md) - System architecture and design decisions
+- [Deployment Guide](/assets/docs/DEPLOYMENT.md) - Detailed deployment instructions and options
+- [Local Testing Guide](/assets/docs/LOCAL_TESTING.md) - Testing the solution locally before deployment
+
+**Monitoring & Analytics:**
+- [Monitoring and Telemetry Guide](/assets/docs/MONITORING.md) - Guide to deploying and using Claude Code Telemetry with OpenTelemetry
+- [Analytics Guide](/assets/docs/ANALYTICS.md) - Advanced analytics with Kinesis Firehose, S3 data lake, and Athena SQL queries
+
+**OIDC Provider Setup Guides:**
+- [Okta Setup](/assets/docs/providers/okta-setup.md)
+- [Microsoft Entra ID (Azure AD) Setup](/assets/docs/providers/microsoft-entra-id-setup.md)
+- [Auth0 Setup](/assets/docs/providers/auth0-setup.md)
+- [Cognito User Pool Setup](/assets/docs/providers/cognito-user-pool-setup.md)
+
+### Supported OIDC Providers
+
+Detailed setup guides are available for:
+
+- [Okta](/assets/docs/providers/okta-setup.md)
+- [Microsoft Entra ID (Azure AD)](/assets/docs/providers/microsoft-entra-id-setup.md)
+- [Auth0](/assets/docs/providers/auth0-setup.md)
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

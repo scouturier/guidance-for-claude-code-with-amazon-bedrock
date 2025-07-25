@@ -1,0 +1,641 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Comprehensive monitoring dashboard for Claude Code with user token tracking and cost analysis'
+
+Parameters:
+  DashboardName:
+    Type: String
+    Default: ClaudeCodeMonitoring
+    Description: Name for the CloudWatch dashboard
+  
+  MetricNamespace:
+    Type: String
+    Default: ClaudeCode
+    Description: CloudWatch namespace for Claude Code metrics
+  
+  BedrockRegion:
+    Type: String
+    Default: us-east-1
+    Description: Primary region where Bedrock is accessed
+  
+  TokenCostPerMillion:
+    Type: Number
+    Default: 15.00
+    Description: Cost per million tokens (adjust based on your Bedrock pricing)
+  
+  AlertEmail:
+    Type: String
+    Default: ''
+    Description: Email address for alerts (optional)
+
+Conditions:
+  HasAlertEmail: !Not [!Equals [!Ref AlertEmail, '']]
+
+Resources:
+  # SNS Topic for Alerts
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Condition: HasAlertEmail
+    Properties:
+      TopicName: !Sub '${DashboardName}-Alerts'
+      DisplayName: Claude Code Monitoring Alerts
+      Subscription:
+        - Endpoint: !Ref AlertEmail
+          Protocol: email
+
+  # Comprehensive Monitoring Dashboard
+  MonitoringDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Ref DashboardName
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "text",
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 3,
+              "properties": {
+                "markdown": "# Claude Code Monitoring Dashboard\n**Organization-wide token usage, cost tracking, and user analytics**\n\nLast Updated: ${AWS::StackName} | Region: ${AWS::Region}",
+                "background": "transparent"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 3,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "${MetricNamespace}", "claude_code.token.usage", "OTelLib", "com.anthropic.claude_code", { "stat": "Sum", "period": 300, "label": "Total Token Usage" } ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "Total Token Usage (5-min intervals)",
+                "period": 300,
+                "stat": "Sum",
+                "yAxis": {
+                  "left": {
+                    "label": "Tokens",
+                    "showUnits": false
+                  }
+                }
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 3,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "${MetricNamespace}", "claude_code.token.usage", "OTelLib", "com.anthropic.claude_code", { "stat": "Sum", "period": 3600, "id": "m1", "visible": false } ],
+                  [ { "expression": "m1 * ${TokenCostPerMillion} / 1000000", "id": "e1", "label": "Hourly Cost ($)" } ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "Estimated Hourly Cost",
+                "period": 3600,
+                "stat": "Sum",
+                "yAxis": {
+                  "left": {
+                    "label": "Cost (USD)",
+                    "showUnits": false
+                  }
+                },
+                "annotations": {
+                  "horizontal": [
+                    {
+                      "label": "Budget Threshold",
+                      "value": 100
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 9,
+              "width": 24,
+              "height": 8,
+              "properties": {
+                "metrics": [
+                  [ "${MetricNamespace}", "claude_code.token.usage", "type", "input", "OTelLib", "com.anthropic.claude_code", { "stat": "Sum", "period": 86400, "label": "Input" } ],
+                  [ "${MetricNamespace}", "claude_code.token.usage", "type", "output", "OTelLib", "com.anthropic.claude_code", { "stat": "Sum", "period": 86400, "label": "Output" } ],
+                  [ "${MetricNamespace}", "claude_code.token.usage", "type", "cacheCreation", "OTelLib", "com.anthropic.claude_code", { "stat": "Sum", "period": 86400, "label": "Cache Creation" } ],
+                  [ "${MetricNamespace}", "claude_code.token.usage", "type", "cacheRead", "OTelLib", "com.anthropic.claude_code", { "stat": "Sum", "period": 86400, "label": "Cache Read" } ]
+                ],
+                "view": "bar",
+                "region": "${AWS::Region}",
+                "title": "Token Usage by Type (Last 24 Hours)",
+                "period": 86400,
+                "stat": "Sum",
+                "yAxis": {
+                  "left": {
+                    "label": "Tokens",
+                    "showUnits": false
+                  }
+                }
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 17,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "${MetricNamespace}", "claude_code.session.count", "OTelLib", "com.anthropic.claude_code", { "stat": "SampleCount", "period": 3600, "label": "Active Sessions" } ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "Active Sessions per Hour",
+                "period": 3600,
+                "yAxis": {
+                  "left": {
+                    "label": "Session Count",
+                    "showUnits": false
+                  }
+                }
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 17,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "${MetricNamespace}", "claude_code.token.usage", "OTelLib", "com.anthropic.claude_code", { "stat": "Sum", "period": 86400, "label": "Total Token Usage" } ]
+                ],
+                "view": "singleValue",
+                "region": "${AWS::Region}",
+                "title": "Total Tokens Used (Last 24 Hours)",
+                "period": 86400,
+                "stat": "Sum"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 23,
+              "width": 24,
+              "height": 8,
+              "properties": {
+                "metrics": [
+                  [ "${MetricNamespace}", "claude_code.token.usage", "type", "input", "OTelLib", "com.anthropic.claude_code", { "stat": "Sum", "period": 300, "label": "Input" } ],
+                  [ "${MetricNamespace}", "claude_code.token.usage", "type", "output", "OTelLib", "com.anthropic.claude_code", { "stat": "Sum", "period": 300, "label": "Output" } ],
+                  [ "${MetricNamespace}", "claude_code.token.usage", "type", "cacheCreation", "OTelLib", "com.anthropic.claude_code", { "stat": "Sum", "period": 300, "label": "Cache Creation" } ],
+                  [ "${MetricNamespace}", "claude_code.token.usage", "type", "cacheRead", "OTelLib", "com.anthropic.claude_code", { "stat": "Sum", "period": 300, "label": "Cache Read" } ]
+                ],
+                "view": "timeSeries",
+                "stacked": true,
+                "region": "${AWS::Region}",
+                "title": "Token Usage by Type Over Time",
+                "period": 300,
+                "stat": "Sum",
+                "yAxis": {
+                  "left": {
+                    "label": "Tokens",
+                    "showUnits": false
+                  }
+                }
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 31,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "${MetricNamespace}", "claude_code.token.usage", "type", "input", "OTelLib", "com.anthropic.claude_code", { "stat": "Sum", "period": 2592000, "id": "m1" } ],
+                  [ "${MetricNamespace}", "claude_code.token.usage", "type", "output", "OTelLib", "com.anthropic.claude_code", { "stat": "Sum", "period": 2592000, "id": "m2" } ],
+                  [ "${MetricNamespace}", "claude_code.token.usage", "type", "cacheCreation", "OTelLib", "com.anthropic.claude_code", { "stat": "Sum", "period": 2592000, "id": "m3" } ],
+                  [ "${MetricNamespace}", "claude_code.token.usage", "type", "cacheRead", "OTelLib", "com.anthropic.claude_code", { "stat": "Sum", "period": 2592000, "id": "m4" } ]
+                ],
+                "view": "pie",
+                "region": "${AWS::Region}",
+                "title": "Token Distribution by Operation Type (30 Days)",
+                "period": 2592000,
+                "stat": "Sum",
+                "legend": {
+                  "position": "bottom"
+                }
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 31,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "${MetricNamespace}", "claude_code.token.usage", "type", "input", "OTelLib", "com.anthropic.claude_code", { "stat": "Sum", "period": 3600, "label": "Input" } ],
+                  [ "${MetricNamespace}", "claude_code.token.usage", "type", "output", "OTelLib", "com.anthropic.claude_code", { "stat": "Sum", "period": 3600, "label": "Output" } ]
+                ],
+                "view": "timeSeries",
+                "stacked": true,
+                "region": "${AWS::Region}",
+                "title": "Input vs Output Tokens (Hourly)",
+                "period": 3600,
+                "stat": "Sum",
+                "yAxis": {
+                  "left": {
+                    "label": "Tokens",
+                    "showUnits": false
+                  }
+                }
+              }
+            },
+            {
+              "type": "text",
+              "x": 0,
+              "y": 37,
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "markdown": "## User Analytics with Identity Provider Attribution\n\n**User-specific metrics with consistent attribution across identity providers**\n\nTo view detailed user analytics including:\n- Top users by token consumption across identity providers (Okta, Auth0, Cognito)\n- Organization-specific usage tracking\n- Cost allocation by user, organization, and identity provider\n- Model usage preferences by department and team\n\nClick here to access the Athena console: [Open Athena Analytics](https://console.aws.amazon.com/athena/home?region=${AWS::Region})\n\nSample queries are available in the Saved Queries section.",
+                "background": "transparent"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 43,
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/Bedrock", "Invocations", "ModelId", "anthropic.claude-3-sonnet-20240229-v1:0", { "stat": "Sum", "period": 3600, "label": "Claude 3 Sonnet" } ],
+                  [ "AWS/Bedrock", "Invocations", "ModelId", "anthropic.claude-3-haiku-20240307-v1:0", { "stat": "Sum", "period": 3600, "label": "Claude 3 Haiku" } ],
+                  [ "AWS/Bedrock", "Invocations", "ModelId", "anthropic.claude-3-opus-20240229-v1:0", { "stat": "Sum", "period": 3600, "label": "Claude 3 Opus" } ],
+                  [ "AWS/Bedrock", "Invocations", { "stat": "Sum", "period": 3600, "label": "Total Invocations" } ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${BedrockRegion}",
+                "title": "Bedrock API Calls",
+                "period": 3600,
+                "stat": "Sum",
+                "yAxis": {
+                  "left": {
+                    "label": "Invocation Count",
+                    "showUnits": false
+                  }
+                }
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 49,
+              "width": 8,
+              "height": 4,
+              "properties": {
+                "metrics": [
+                  [ "${MetricNamespace}", "claude_code.token.usage", "OTelLib", "com.anthropic.claude_code", { "stat": "Sum", "period": 86400, "id": "m1" } ],
+                  [ { "expression": "m1 * ${TokenCostPerMillion} / 1000000", "id": "e1", "label": "Today's Cost" } ]
+                ],
+                "view": "singleValue",
+                "region": "${AWS::Region}",
+                "title": "Today's Total Cost",
+                "period": 86400,
+                "stat": "Sum"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 8,
+              "y": 49,
+              "width": 8,
+              "height": 4,
+              "properties": {
+                "metrics": [
+                  [ "${MetricNamespace}", "claude_code.token.usage", "OTelLib", "com.anthropic.claude_code", { "stat": "Sum", "period": 604800, "id": "m1" } ],
+                  [ { "expression": "m1 * ${TokenCostPerMillion} / 1000000", "id": "e1", "label": "Week's Cost" } ]
+                ],
+                "view": "singleValue",
+                "region": "${AWS::Region}",
+                "title": "This Week's Cost",
+                "period": 604800,
+                "stat": "Sum"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 16,
+              "y": 49,
+              "width": 8,
+              "height": 4,
+              "properties": {
+                "metrics": [
+                  [ "${MetricNamespace}", "claude_code.token.usage", "OTelLib", "com.anthropic.claude_code", { "stat": "Sum", "period": 2592000, "id": "m1" } ],
+                  [ { "expression": "m1 * ${TokenCostPerMillion} / 1000000", "id": "e1", "label": "Month's Cost" } ]
+                ],
+                "view": "singleValue",
+                "region": "${AWS::Region}",
+                "title": "This Month's Cost",
+                "period": 2592000,
+                "stat": "Sum"
+              }
+            }
+          ]
+        }
+
+  # CloudWatch Alarms
+  HighTokenUsageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${DashboardName}-HighTokenUsage'
+      AlarmDescription: 'Alert when total token usage exceeds threshold'
+      ComparisonOperator: GreaterThanThreshold
+      EvaluationPeriods: 1
+      Threshold: 10000000  # 10M tokens per hour
+      TreatMissingData: notBreaching
+      MetricName: claude_code.token.usage
+      Namespace: !Ref MetricNamespace
+      Statistic: Sum
+      Period: 3600
+      AlarmActions:
+        - !If [HasAlertEmail, !Ref AlertTopic, !Ref 'AWS::NoValue']
+
+  DailyTokenThresholdAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${DashboardName}-DailyTokenThreshold'
+      AlarmDescription: !Sub 'Alert when daily token usage exceeds threshold (approx $${TokenCostPerMillion} per million tokens)'
+      ComparisonOperator: GreaterThanThreshold
+      EvaluationPeriods: 1
+      Threshold: 66666667  # ~$1000 worth of tokens at $15/million
+      TreatMissingData: notBreaching
+      MetricName: claude_code.token.usage
+      Namespace: !Ref MetricNamespace
+      Statistic: Sum
+      Period: 86400
+      AlarmActions:
+        - !If [HasAlertEmail, !Ref AlertTopic, !Ref 'AWS::NoValue']
+
+  # Note: API error metrics are not available in Claude Code telemetry
+  # Commenting out this alarm until such metrics are implemented
+  # HighErrorRateAlarm:
+  #   Type: AWS::CloudWatch::Alarm
+  #   Properties:
+  #     AlarmName: !Sub '${DashboardName}-HighErrorRate'
+  #     AlarmDescription: 'Alert when API error rate is high'
+  #     MetricName: claude_code.api.errors
+  #     Namespace: !Ref MetricNamespace
+  #     Statistic: Sum
+  #     Period: 300
+  #     EvaluationPeriods: 2
+  #     Threshold: 50
+  #     ComparisonOperator: GreaterThanThreshold
+  #     TreatMissingData: notBreaching
+  #     AlarmActions:
+  #       - !If [HasAlertEmail, !Ref AlertTopic, !Ref 'AWS::NoValue']
+
+  # Bedrock-specific Alarms
+  HighBedrockUsageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${DashboardName}-HighBedrockUsage'
+      AlarmDescription: 'Alert when Bedrock API calls spike unexpectedly'
+      ComparisonOperator: GreaterThanThreshold
+      EvaluationPeriods: 2
+      Threshold: 1000  # 1000 API calls per hour
+      TreatMissingData: notBreaching
+      MetricName: Invocations
+      Namespace: AWS/Bedrock
+      Statistic: Sum
+      Period: 3600
+      AlarmActions:
+        - !If [HasAlertEmail, !Ref AlertTopic, !Ref 'AWS::NoValue']
+
+  UnusualModelUsageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${DashboardName}-UnusualModelUsage'
+      AlarmDescription: 'Alert when expensive models are used excessively'
+      ComparisonOperator: GreaterThanThreshold
+      EvaluationPeriods: 1
+      Threshold: 50000000  # 50M tokens per hour
+      TreatMissingData: notBreaching
+      Metrics:
+        - Id: m1
+          MetricStat:
+            Metric:
+              MetricName: claude_code.token.usage
+              Namespace: !Ref MetricNamespace
+              Dimensions:
+                - Name: model
+                  Value: '*opus*'
+            Period: 3600
+            Stat: Sum
+          ReturnData: true
+      AlarmActions:
+        - !If [HasAlertEmail, !Ref AlertTopic, !Ref 'AWS::NoValue']
+
+  # CloudWatch Logs Insights Queries (saved as SSM Parameters)
+  TopUsersQuery:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/cloudwatch/insights/${DashboardName}/top-users'
+      Type: String
+      Value: |
+        fields @timestamp, user.id, user.email, organization.id, claude_code.token.usage
+        | filter @type = "metric" and MetricName = "claude_code.token.usage"
+        | stats sum(claude_code.token.usage) as total_tokens by user.id, user.email, organization.id
+        | sort total_tokens desc
+        | limit 20
+      Description: 'Query to find top users by token consumption with identity attribution'
+
+  UserActivityQuery:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/cloudwatch/insights/${DashboardName}/user-activity'
+      Type: String
+      Value: |
+        fields @timestamp, user.id, user.email, organization.id, session.id, claude_code.token.usage, model
+        | filter @type = "metric" and user.id = "USER_ID_HERE"
+        | sort @timestamp desc
+        | limit 100
+      Description: 'Query to track specific user activity'
+
+  CostByModelQuery:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/cloudwatch/insights/${DashboardName}/cost-by-model'
+      Type: String
+      Value: |
+        fields model, claude_code.token.usage, organization.id
+        | filter @type = "metric" and MetricName = "claude_code.token.usage"
+        | stats sum(claude_code.token.usage) as tokens by model, organization.id
+        | sort tokens desc
+      Description: 'Query to analyze token usage by model type and organization'
+      
+  OrganizationUsageQuery:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/cloudwatch/insights/${DashboardName}/organization-usage'
+      Type: String
+      Value: |
+        fields @timestamp, organization.id, claude_code.token.usage
+        | filter @type = "metric" and MetricName = "claude_code.token.usage"
+        | stats sum(claude_code.token.usage) as total_tokens by organization.id
+        | sort total_tokens desc
+      Description: 'Query to analyze token usage by organization'
+      
+  EmailDomainUsageQuery:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/cloudwatch/insights/${DashboardName}/email-domain-usage'
+      Type: String
+      Value: |
+        fields @timestamp, user.email, claude_code.token.usage
+        | filter @type = "metric" and MetricName = "claude_code.token.usage" and isPresent(user.email)
+        | parse user.email "*@*" as username, domain
+        | stats sum(claude_code.token.usage) as total_tokens by domain
+        | sort total_tokens desc
+      Description: 'Query to analyze token usage by email domain'
+
+  # Log Groups for Claude Code telemetry (metrics log group created by OTEL collector stack)
+  TelemetryLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/claude-code/telemetry
+      RetentionInDays: 7
+      Tags:
+        - Key: Purpose
+          Value: Claude Code OTEL Telemetry
+        - Key: Stack
+          Value: !Ref AWS::StackName
+          
+  # Note: /aws/claude-code/metrics log group is created by the OTEL collector stack
+
+  # Additional Cost Monitoring Dashboard
+  BedrockCostDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub '${DashboardName}-Bedrock-Costs'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/Billing", "EstimatedCharges", { "stat": "Maximum", "period": 86400, "region": "us-east-1", "visible": false } ],
+                  [ { "expression": "SEARCH(' {AWS/Billing,Currency,ServiceName} MetricName=\"EstimatedCharges\" ServiceName=\"AmazonBedrock\" ', 'Maximum', 86400)", "id": "e1", "label": "Bedrock Daily Cost", "region": "us-east-1" } ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "us-east-1",
+                "title": "Bedrock Service Costs (Daily)",
+                "period": 86400,
+                "yAxis": {
+                  "left": {
+                    "label": "Cost (USD)",
+                    "showUnits": false
+                  }
+                },
+                "annotations": {
+                  "horizontal": [
+                    {
+                      "label": "Budget Threshold",
+                      "value": 1000
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "${MetricNamespace}", "claude_code.token.usage", "OTelLib", "com.anthropic.claude_code", { "stat": "Sum", "period": 86400, "label": "Total Tokens" } ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "Daily Token Usage",
+                "period": 86400,
+                "stat": "Sum"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "${MetricNamespace}", "claude_code.token.usage", "OTelLib", "com.anthropic.claude_code", { "stat": "Sum", "period": 86400, "id": "m1" } ],
+                  [ { "expression": "m1 * ${TokenCostPerMillion} / 1000000", "id": "e1", "label": "Estimated Cost" } ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "Estimated Daily Cost from Tokens",
+                "period": 86400,
+                "yAxis": {
+                  "left": {
+                    "label": "Cost (USD)"
+                  }
+                }
+              }
+            }
+          ]
+        }
+
+Outputs:
+  DashboardURL:
+    Description: Direct URL to the CloudWatch dashboard
+    Value: !Sub 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${DashboardName}'
+  
+  MetricsExplorerURL:
+    Description: URL to explore all Claude Code metrics
+    Value: !Sub 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#metricsV2:graph=~();query=${MetricNamespace}'
+  
+  LogsInsightsURL:
+    Description: URL to CloudWatch Logs Insights for custom queries
+    Value: !Sub 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:logs-insights'
+  
+  AlertTopicArn:
+    Description: SNS Topic ARN for alerts
+    Value: !If [HasAlertEmail, !Ref AlertTopic, 'Not configured - provide AlertEmail parameter']
+    
+  SavedQueriesPrefix:
+    Description: SSM Parameter Store prefix for saved queries
+    Value: !Sub '/cloudwatch/insights/${DashboardName}/'
+    
+  MetricsLogGroupName:
+    Description: CloudWatch Log Group for Claude Code metrics (use with Logs Insights)
+    Value: /aws/claude-code/metrics
+    
+  TelemetryLogGroupName:
+    Description: CloudWatch Log Group for Claude Code telemetry (use with Logs Insights)
+    Value: !Ref TelemetryLogGroup
+  
+  BedrockCostDashboardURL:
+    Description: Direct URL to Bedrock cost monitoring dashboard
+    Value: !Sub 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${DashboardName}-Bedrock-Costs'
