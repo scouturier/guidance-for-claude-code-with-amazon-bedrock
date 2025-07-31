@@ -398,7 +398,7 @@ Resources:
           SchemaConfiguration:
             DatabaseName: !Ref GlueDatabase
             TableName: !Ref GlueTable
-            RoleArn: !GetAtt FirehoseDeliveryRole.Arn
+            RoleARN: !GetAtt FirehoseDeliveryRole.Arn
         ProcessingConfiguration:
           Enabled: true
           Processors:
