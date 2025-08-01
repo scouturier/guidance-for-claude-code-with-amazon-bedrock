@@ -175,7 +175,7 @@ class InitCommand(Command):
         checks = {
             "AWS CLI installed": self._check_aws_cli(),
             "AWS credentials configured": self._check_aws_credentials(),
-            "Python 3.8+ available": self._check_python_version(),
+            "Python 3.10+ available": self._check_python_version(),
         }
         
         # Check current region and Bedrock access
@@ -666,7 +666,7 @@ class InitCommand(Command):
     def _check_python_version(self) -> bool:
         """Check Python version."""
         import sys
-        return sys.version_info >= (3, 8)
+        return sys.version_info >= (3, 10)
     
     def _get_bedrock_regions(self) -> List[str]:
         """Get list of regions where Bedrock is available."""
