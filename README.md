@@ -131,7 +131,7 @@ Based on AWS Pricing Calculator: [View Detailed Estimate](https://calculator.aws
 
 **Software Requirements:**
 
-- Python 3.8-3.13
+- Python 3.10-3.13
 - Poetry (dependency management)
 - AWS CLI v2
 - Git
@@ -341,18 +341,22 @@ The guidance includes a comprehensive CLI tool (`ccwb`) for deployment and manag
 ### Documentation
 
 **Getting Started:**
+
 - [CLI Reference](/assets/docs/CLI_REFERENCE.md) - Complete command reference for the `ccwb` tool
 
 **Architecture & Deployment:**
+
 - [Architecture Guide](/assets/docs/ARCHITECTURE.md) - System architecture and design decisions
 - [Deployment Guide](/assets/docs/DEPLOYMENT.md) - Detailed deployment instructions and options
 - [Local Testing Guide](/assets/docs/LOCAL_TESTING.md) - Testing the guidance locally before deployment
 
 **Monitoring & Analytics:**
+
 - [Monitoring and Telemetry Guide](/assets/docs/MONITORING.md) - Guide to deploying and using Claude Code Telemetry with OpenTelemetry
 - [Analytics Guide](/assets/docs/ANALYTICS.md) - Advanced analytics with Kinesis Firehose, S3 data lake, and Athena SQL queries
 
 **OIDC Provider Setup Guides:**
+
 - [Okta Setup](/assets/docs/providers/okta-setup.md)
 - [Microsoft Entra ID (Azure AD) Setup](/assets/docs/providers/microsoft-entra-id-setup.md)
 - [Auth0 Setup](/assets/docs/providers/auth0-setup.md)
