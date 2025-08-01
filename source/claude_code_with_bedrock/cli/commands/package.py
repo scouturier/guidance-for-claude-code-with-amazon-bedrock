@@ -419,7 +419,7 @@ RUN pyinstaller \\
                         raise RuntimeError("Cannot build Linux OTEL helper on macOS without working Docker")
         
         # Find the source file
-        src_file = Path(__file__).parent.parent.parent.parent / "scripts" / "claude_otel_headers.py"
+        src_file = Path(__file__).parent.parent.parent.parent / "otel_helper" / "__main__.py"
         
         if not src_file.exists():
             raise FileNotFoundError(f"OTEL helper script not found: {src_file}")
@@ -477,7 +477,7 @@ RUN apt-get update && apt-get install -y \\
     && rm -rf /var/lib/apt/lists/*
 
 # Copy source files
-COPY scripts/claude_otel_headers.py /build/
+COPY otel_helper /build/otel_helper/
 COPY pyproject.toml poetry.lock* /build/
 
 # Install PyInstaller and dependencies
@@ -489,7 +489,7 @@ RUN pyinstaller \\
     --name otel-helper-linux \\
     --strip \\
     --noupx \\
-    /build/claude_otel_headers.py
+    /build/otel_helper/__main__.py
 """
         
         # Write temporary Dockerfile
