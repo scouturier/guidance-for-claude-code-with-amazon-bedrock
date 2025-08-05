@@ -193,8 +193,14 @@ class MultiProviderAuth:
                     return None
 
                 creds = json.loads(creds_json)
+                
+                # Check for dummy/cleared credentials first
+                # These are set when credentials are cleared to maintain keychain permissions
+                if creds.get("AccessKeyId") == "EXPIRED":
+                    self._debug_print("Found cleared dummy credentials, need re-authentication")
+                    return None
 
-                # Validate expiration
+                # Validate expiration for real credentials
                 exp_str = creds.get("Expiration")
                 if exp_str:
                     exp_time = datetime.fromisoformat(exp_str.replace("Z", "+00:00"))
@@ -220,8 +226,13 @@ class MultiProviderAuth:
             try:
                 with open(session_file, "r") as f:
                     creds = json.load(f)
+                
+                # Check for dummy/cleared credentials first
+                if creds.get("AccessKeyId") == "EXPIRED":
+                    self._debug_print("Found cleared dummy credentials in session file, need re-authentication")
+                    return None
 
-                # Validate expiration
+                # Validate expiration for real credentials
                 exp_str = creds.get("Expiration")
                 if exp_str:
                     exp_time = datetime.fromisoformat(exp_str.replace("Z", "+00:00"))
@@ -260,6 +271,66 @@ class MultiProviderAuth:
 
             # Set restrictive permissions
             session_file.chmod(0o600)
+    
+    def clear_cached_credentials(self):
+        """Clear all cached credentials for this profile"""
+        cleared_items = []
+        
+        # Clear from keyring by replacing with expired credentials
+        # This maintains keychain access permissions on macOS
+        try:
+            if keyring.get_password("claude-code-with-bedrock", f"{self.profile}-credentials"):
+                # Replace with expired dummy credential instead of deleting
+                # This prevents macOS from asking for "Always Allow" again
+                expired_credential = json.dumps({
+                    "Version": 1,
+                    "AccessKeyId": "EXPIRED",
+                    "SecretAccessKey": "EXPIRED",
+                    "SessionToken": "EXPIRED",
+                    "Expiration": "2000-01-01T00:00:00Z"  # Far past date
+                })
+                keyring.set_password("claude-code-with-bedrock", f"{self.profile}-credentials", expired_credential)
+                cleared_items.append("keyring credentials")
+        except Exception as e:
+            self._debug_print(f"Could not clear keyring credentials: {e}")
+        
+        # Clear monitoring token from keyring  
+        try:
+            if keyring.get_password("claude-code-with-bedrock", f"{self.profile}-monitoring"):
+                # Replace with expired dummy token
+                expired_token = json.dumps({
+                    "token": "EXPIRED",
+                    "expires": 0,  # Expired timestamp
+                    "email": "",
+                    "profile": self.profile
+                })
+                keyring.set_password("claude-code-with-bedrock", f"{self.profile}-monitoring", expired_token)
+                cleared_items.append("keyring monitoring token")
+        except Exception as e:
+            self._debug_print(f"Could not clear keyring monitoring token: {e}")
+        
+        # Clear session files
+        session_dir = Path.home() / ".claude-code-session"
+        if session_dir.exists():
+            session_file = session_dir / f"{self.profile}-session.json"
+            monitoring_file = session_dir / f"{self.profile}-monitoring.json"
+            
+            if session_file.exists():
+                session_file.unlink()
+                cleared_items.append("session file")
+            
+            if monitoring_file.exists():
+                monitoring_file.unlink()
+                cleared_items.append("monitoring token file")
+            
+            # Remove directory if empty
+            try:
+                if not any(session_dir.iterdir()):
+                    session_dir.rmdir()
+            except Exception:
+                pass
+        
+        return cleared_items
 
     def save_monitoring_token(self, id_token, token_claims):
         """Save ID token for monitoring authentication"""
@@ -620,6 +691,23 @@ class MultiProviderAuth:
             return formatted_creds
 
         except Exception as e:
+            # Check if this is a credential error that suggests bad cached credentials
+            error_str = str(e)
+            if any(err in error_str for err in [
+                "InvalidParameterException",
+                "NotAuthorizedException", 
+                "ValidationError",
+                "Invalid AccessKeyId",
+                "Token is not from a supported provider"
+            ]):
+                self._debug_print("Detected invalid credentials, clearing cache...")
+                self.clear_cached_credentials()
+                # Add helpful message for user
+                raise Exception(
+                    f"Authentication failed - cached credentials were invalid and have been cleared.\n"
+                    f"Please try again to re-authenticate.\n"
+                    f"Original error: {error_str}"
+                )
             raise Exception(f"Failed to get AWS credentials: {str(e)}")
 
     def _wait_for_auth_completion(self, timeout=60):
@@ -752,10 +840,24 @@ def main():
     parser.add_argument(
         "--get-monitoring-token", action="store_true", help="Get cached monitoring token instead of AWS credentials"
     )
+    parser.add_argument(
+        "--clear-cache", action="store_true", help="Clear cached credentials and force re-authentication"
+    )
 
     args = parser.parse_args()
 
     auth = MultiProviderAuth(profile=args.profile)
+
+    # Handle cache clearing request
+    if args.clear_cache:
+        cleared = auth.clear_cached_credentials()
+        if cleared:
+            print(f"Cleared cached credentials for profile '{args.profile}':", file=sys.stderr)
+            for item in cleared:
+                print(f"  • {item}", file=sys.stderr)
+        else:
+            print(f"No cached credentials found for profile '{args.profile}'", file=sys.stderr)
+        sys.exit(0)
 
     # Handle monitoring token request
     if args.get_monitoring_token:
@@ -764,7 +866,23 @@ def main():
             print(token)
             sys.exit(0)
         else:
-            self._debug_print("No valid monitoring token found. Please authenticate first.")
+            # No cached token, trigger authentication to get one
+            auth._debug_print("No valid monitoring token found, triggering authentication...")
+            try:
+                # Run the normal authentication flow
+                exit_code = auth.run()
+                if exit_code == 0:
+                    # Authentication succeeded, try to get the token again
+                    token = auth.get_monitoring_token()
+                    if token:
+                        print(token)
+                        sys.exit(0)
+            except Exception as e:
+                auth._debug_print(f"Authentication failed: {e}")
+            
+            # If we get here, couldn't get a token even after auth attempt
+            # Return failure exit code so OTEL helper knows auth failed
+            # This prevents OTEL helper from using default/unknown values
             sys.exit(1)
 
     # Normal AWS credential flow

@@ -5,6 +5,7 @@
 
 import os
 import shutil
+import subprocess
 from pathlib import Path
 from cleo.commands.command import Command
 from cleo.helpers import option
@@ -28,12 +29,25 @@ class CleanupCommand(Command):
             description="AWS profile name to remove (default: ClaudeCode)",
             flag=False,
             default="ClaudeCode"
+        ),
+        option(
+            "credentials-only",
+            description="Only clear cached credentials without removing other components",
+            flag=True
         )
     ]
     
     def handle(self) -> int:
         """Execute the cleanup command."""
         console = Console()
+        
+        profile_name = self.option("profile")
+        force = self.option("force")
+        credentials_only = self.option("credentials-only")
+        
+        # Handle credentials-only mode
+        if credentials_only:
+            return self._clear_credentials_only(console, profile_name, force)
         
         # Show what will be cleaned
         console.print(Panel.fit(
@@ -42,9 +56,6 @@ class CleanupCommand(Command):
             border_style="yellow",
             padding=(1, 2)
         ))
-        
-        profile_name = self.option("profile")
-        force = self.option("force")
         
         # List items to be removed
         items_to_remove = []
@@ -151,5 +162,62 @@ class CleanupCommand(Command):
         console.print("\n[bold]Next steps:[/bold]")
         console.print("• Run 'ccwb package' to create a new distribution")
         console.print("• Run 'ccwb test' to reinstall and test")
+        
+        return 0
+    
+    def _clear_credentials_only(self, console, profile_name, force):
+        """Clear only cached credentials without removing other components."""
+        console.print(Panel.fit(
+            "[bold cyan]Clear Cached Credentials[/bold cyan]\n\n"
+            f"This will clear cached credentials for profile: {profile_name}",
+            border_style="cyan",
+            padding=(1, 2)
+        ))
+        
+        # Check if credential-process exists
+        credential_process = Path.home() / "claude-code-with-bedrock" / "credential-process"
+        
+        if not credential_process.exists():
+            console.print("[yellow]Credential process not found. Nothing to clear.[/yellow]")
+            return 0
+        
+        # Confirm clearing
+        if not force:
+            if not Confirm.ask("\n[bold yellow]Clear cached credentials?[/bold yellow]"):
+                console.print("\n[yellow]Operation cancelled.[/yellow]")
+                return 0
+        
+        # Run the credential process with --clear-cache flag
+        console.print("\n[bold]Clearing cached credentials...[/bold]")
+        
+        try:
+            result = subprocess.run(
+                [str(credential_process), "--profile", profile_name, "--clear-cache"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if result.returncode == 0:
+                if result.stderr:
+                    # Parse the output to show what was cleared
+                    for line in result.stderr.split('\n'):
+                        if line.strip():
+                            console.print(f"  {line}")
+                console.print("\n[green]✓ Cached credentials cleared successfully![/green]")
+            else:
+                console.print(f"[red]Failed to clear credentials: {result.stderr}[/red]")
+                return 1
+                
+        except subprocess.TimeoutExpired:
+            console.print("[red]Operation timed out[/red]")
+            return 1
+        except Exception as e:
+            console.print(f"[red]Error clearing credentials: {e}[/red]")
+            return 1
+        
+        console.print("\n[bold]Next steps:[/bold]")
+        console.print("• The next AWS command will trigger re-authentication")
+        console.print("• Use 'export AWS_PROFILE=ClaudeCode' to set the profile")
         
         return 0
