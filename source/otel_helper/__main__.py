@@ -17,6 +17,7 @@ import base64
 import logging
 import argparse
 import hashlib
+import subprocess
 from pathlib import Path
 
 # Configure debug mode if requested
@@ -31,22 +32,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger("claude-otel-headers")
 
-# Constants - Match the same constants used by cognito_auth/__main__.py
-KEYRING_SERVICE = "claude-code-with-bedrock"
-KEYRING_USERNAME = "ClaudeCode-monitoring"
-SESSION_FILE_PATH = os.path.expanduser("~/.claude-code-session/ClaudeCode-monitoring.json")
-CONFIG_FILE_PATH = os.path.expanduser("~/claude-code-with-bedrock/config.json")
-DEFAULT_STORAGE = "keyring"
+# Constants
+# Token retrieval is now handled via credential-process to avoid keychain prompts
 
 
 def parse_args():
     """Parse command-line arguments"""
     parser = argparse.ArgumentParser(description="Generate OTEL headers from authentication token")
-    parser.add_argument("--service", default=KEYRING_SERVICE, help=f"Keyring service name (default: {KEYRING_SERVICE})")
-    parser.add_argument(
-        "--username", default=KEYRING_USERNAME, help=f"Keyring username/key (default: {KEYRING_USERNAME})"
-    )
-    parser.add_argument("--storage", help="Override storage method (keyring or session)")
     parser.add_argument("--test", action="store_true", help="Run in test mode with verbose output")
     parser.add_argument("--verbose", action="store_true", help="Show verbose output")
     args = parser.parse_args()
@@ -63,78 +55,13 @@ def parse_args():
     return args
 
 
-def get_configured_storage_method():
-    """Determine which storage method the customer has chosen in ccwb init"""
-    try:
-        if os.path.exists(CONFIG_FILE_PATH):
-            with open(CONFIG_FILE_PATH, "r") as f:
-                config = json.load(f)
-
-                # Check for credential_storage in config (how cognito_auth/__main__.py stores it)
-                if "ClaudeCode" in config:
-                    storage = config.get("ClaudeCode", {}).get("credential_storage")
-                    if storage in ["keyring", "session"]:
-                        logger.info(f"Using storage method from config: {storage}")
-                        return storage
-
-    except Exception as e:
-        logger.warning(f"Error reading config file: {e}")
-
-    logger.info(f"No storage method configured, using default: {DEFAULT_STORAGE}")
-    return DEFAULT_STORAGE
+# Note: Storage method configuration no longer needed
+# OTEL helper uses credential-process which handles storage internally
 
 
-def get_token_from_keyring(service, username):
-    """Retrieve token from system keyring"""
-    try:
-        # Conditionally import keyring only if needed
-        try:
-            import keyring
-        except ImportError:
-            logger.warning("Keyring package is not installed - falling back to session file")
-            return None
-
-        # First try to get token as saved by cognito_auth/__main__.py
-        token_json = keyring.get_password(service, username)
-
-        if token_json:
-            try:
-                # Token might be stored as JSON string with additional metadata
-                token_data = json.loads(token_json)
-                if isinstance(token_data, dict) and "token" in token_data:
-                    logger.info(f"Found token in keyring JSON under {service}/{username}")
-                    return token_data["token"]
-            except json.JSONDecodeError:
-                # Not JSON, might be direct token string
-                logger.info(f"Found direct token string in keyring under {service}/{username}")
-                return token_json
-
-        logger.warning(f"No token found in keyring under {service}/{username}")
-    except Exception as e:
-        logger.warning(f"Error accessing keyring: {e} - falling back to session file")
-
-    return None
-
-
-def get_token_from_session_file():
-    """Retrieve token from session file"""
-    try:
-        session_file = Path(SESSION_FILE_PATH)
-        if not session_file.exists():
-            logger.warning(f"Session file not found: {SESSION_FILE_PATH}")
-            return None
-
-        with open(session_file, "r") as f:
-            data = json.load(f)
-            token = data.get("token")
-            if token:
-                logger.info("Token found in session file")
-                return token
-            logger.warning("No token found in session file")
-    except Exception as e:
-        logger.error(f"Error reading session file: {e}")
-
-    return None
+# Note: Direct keychain and session file access removed
+# All token retrieval now goes through credential-process
+# This prevents macOS keychain permission prompts for the OTEL helper
 
 
 def decode_jwt_payload(token):
@@ -247,37 +174,61 @@ def format_as_headers_dict(attributes):
     return headers
 
 
+def get_token_via_credential_process():
+    """Get monitoring token via credential-process to avoid direct keychain access"""
+    logger.info("Getting token via credential-process...")
+    
+    # Path to credential process
+    credential_process = os.path.expanduser("~/claude-code-with-bedrock/credential-process")
+    
+    # Check if credential process exists
+    if not os.path.exists(credential_process):
+        logger.warning(f"Credential process not found at {credential_process}")
+        return None
+    
+    try:
+        # Run credential process with --get-monitoring-token flag
+        # This will return cached token or trigger auth if needed
+        result = subprocess.run(
+            [credential_process, "--get-monitoring-token"],
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minute timeout for auth if needed
+        )
+        
+        if result.returncode == 0 and result.stdout.strip():
+            logger.info("Successfully retrieved token via credential-process")
+            return result.stdout.strip()
+        else:
+            logger.warning("Could not get token via credential-process")
+            return None
+            
+    except subprocess.TimeoutExpired:
+        logger.warning("Credential process timed out")
+        return None
+    except Exception as e:
+        logger.warning(f"Failed to get token via credential-process: {e}")
+        return None
+
+
 def main():
     """Main function to generate OTEL headers"""
     args = parse_args()
 
-    # Try to get token from environment first (set by cognito_auth/__main__.py)
+    # Try to get token from environment first (fastest, set by cognito_auth/__main__.py)
     token = os.environ.get("CLAUDE_CODE_MONITORING_TOKEN")
     if token:
         logger.info("Using token from environment variable CLAUDE_CODE_MONITORING_TOKEN")
     else:
-        # Determine which storage method to use
-        storage_method = args.storage or get_configured_storage_method()
-
-        # Get token based on storage method
-        if storage_method == "keyring":
-            token = get_token_from_keyring(args.service, args.username)
-            # If keyring fails, try session file as fallback
-            if not token and storage_method == "keyring":
-                logger.info("Keyring access failed, trying session file as fallback")
-                token = get_token_from_session_file()
-        elif storage_method == "session":
-            token = get_token_from_session_file()
-        else:
-            logger.warning(f"Unknown storage method: {storage_method}, trying both methods")
-            token = get_token_from_keyring(args.service, args.username) or get_token_from_session_file()
-
-    if not token:
-        logger.error("No authentication token found")
-        # Return minimal headers as JSON (flat object with lowercase keys)
-        if not TEST_MODE:
-            print(json.dumps({"x-user-email": "unknown@example.com", "x-user-id": "unknown"}))
-        return 1
+        # Use credential-process to get token (handles auth if needed)
+        # This avoids direct keychain access from OTEL helper
+        token = get_token_via_credential_process()
+        
+        if not token:
+            logger.warning("Could not obtain authentication token")
+            # Return failure to indicate we couldn't get user attributes
+            # Claude Code should handle this gracefully
+            return 1
 
     # Decode token and extract user info
     try:
@@ -331,6 +282,7 @@ def main():
 
     except Exception as e:
         logger.error(f"Error processing token: {e}")
+        # Return failure on error - Claude Code should handle this gracefully
         return 1
 
     return 0

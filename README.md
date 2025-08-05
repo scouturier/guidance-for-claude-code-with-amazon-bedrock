@@ -324,6 +324,18 @@ The optional CloudWatch dashboard provides:
 - **Performance Metrics**: Response times and error rates
 - **User Activity**: Active users and authentication patterns
 
+## Troubleshooting
+
+### Clearing Cached Credentials
+
+To force re-authentication:
+
+```bash
+~/claude-code-with-bedrock/credential-process --clear-cache
+```
+
+Note: This replaces credentials with expired dummies rather than deleting them, which prevents macOS from repeatedly asking for keychain permissions.
+
 ## CLI Commands
 
 The guidance includes a comprehensive CLI tool (`ccwb`) for deployment and management:

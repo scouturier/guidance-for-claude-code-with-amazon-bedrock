@@ -727,6 +727,8 @@ echo "To use Claude Code authentication:"
 echo "  export AWS_PROFILE=ClaudeCode"
 echo "  aws sts get-caller-identity"
 echo
+echo "Note: Authentication will automatically open your browser when needed."
+echo
 '''
         
         installer_path = output_dir / "install.sh"
@@ -775,6 +777,20 @@ If you encounter issues with authentication:
 - Ensure you're assigned to the Claude Code application in your identity provider
 - Check that port 8400 is available for the callback
 - Contact your IT administrator for help
+
+### Authentication Behavior
+
+The system handles authentication automatically:
+- Your browser will open when authentication is needed
+- Credentials are cached securely to avoid repeated logins
+- Bad credentials are automatically cleared and re-authenticated
+
+To manually clear cached credentials (if needed):
+```bash
+~/claude-code-with-bedrock/credential-process --clear-cache
+```
+
+This will force re-authentication on your next AWS command.
 
 ### Browser doesn't open
 Check that you're not in an SSH session. The browser needs to open on your local machine.

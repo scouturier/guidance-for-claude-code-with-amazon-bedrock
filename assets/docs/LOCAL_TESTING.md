@@ -78,8 +78,8 @@ Understanding how authentication works helps you support users effectively. The 
 To force a fresh authentication and observe the complete flow:
 
 ```bash
-# Clear any cached credentials
-rm -rf ~/claude-code-with-bedrock/cache/*
+# Clear any cached credentials (this replaces them with expired dummies to preserve keychain permissions)
+~/claude-code-with-bedrock/credential-process --clear-cache
 
 # Trigger authentication
 aws sts get-caller-identity --profile ClaudeCode
@@ -167,3 +167,27 @@ claude
 ```
 
 Claude Code automatically uses the AWS profile for authentication. Behind the scenes, it calls the credential process whenever it needs to access Bedrock, with all authentication handled transparently.
+
+### Important: AWS Credential Precedence
+
+When testing, be aware that AWS CLI uses the following credential precedence order:
+
+1. **Environment variables** (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`) - highest priority
+2. Command line options
+3. Environment variable `AWS_PROFILE`
+4. Credential process from AWS config
+5. Config file credentials
+6. Instance metadata
+
+If you have AWS credentials in environment variables (e.g., from other tools like Isengard), they will override the ClaudeCode profile. To ensure you're using the Claude Code authentication:
+
+```bash
+# Clear any existing AWS credentials from environment
+unset AWS_ACCESS_KEY_ID
+unset AWS_SECRET_ACCESS_KEY
+unset AWS_SESSION_TOKEN
+
+# Then use the ClaudeCode profile
+export AWS_PROFILE=ClaudeCode
+aws sts get-caller-identity
+```
