@@ -49,6 +49,9 @@ pyinstaller = "^6.0.0"
 ruff = "^0.1.0"
 mypy = "^1.5.0"
 types-requests = "*"
+pre-commit = "^3.5.0"
+cfn-lint = "^0.83.0"
+yamllint = "^1.33.0"
 
 [build-system]
 requires = ["poetry-core"]

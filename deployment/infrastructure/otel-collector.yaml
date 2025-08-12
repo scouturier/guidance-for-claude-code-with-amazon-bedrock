@@ -303,7 +303,7 @@ Resources:
 
         receivers:
           otlp:
-            protocols:z
+            protocols:
               grpc:
                 endpoint: 0.0.0.0:4317
                 include_metadata: true
@@ -374,7 +374,7 @@ Resources:
               # Core user dimensions
               - dimensions: [[user.id, aws.account_id, OTelLib]]
                 metric_name_selectors: [".*"]
-              
+
               # Team and organization dimensions
               - dimensions: [[department, team.id, cost_center, organization, OTelLib]]
                 metric_name_selectors: [".*"]
@@ -382,35 +382,35 @@ Resources:
                 metric_name_selectors: [".*"]
               - dimensions: [[cost_center, organization, OTelLib]]
                 metric_name_selectors: [".*"]
-              
+
               # User + team combinations for filtering
               - dimensions: [[user.id, department, team.id, OTelLib]]
                 metric_name_selectors: [".*"]
               - dimensions: [[user.id, cost_center, OTelLib]]
                 metric_name_selectors: [".*"]
-              
+
               # Model and session tracking
               - dimensions: [[model, department, team.id, OTelLib]]
                 metric_name_selectors: ["claude_code.token.usage", "claude_code.cost.usage"]
               - dimensions: [[session.id, user.id, OTelLib]]
                 metric_name_selectors: ["claude_code.active_time.*"]
-              
+
               # Cost tracking dimensions
               - dimensions: [[cost_center, aws.account_id, OTelLib]]
                 metric_name_selectors: ["claude_code.cost.usage"]
               - dimensions: [[department, cost_center, model, OTelLib]]
                 metric_name_selectors: ["claude_code.cost.usage", "claude_code.token.usage"]
-              
+
               # Location and role based
               - dimensions: [[location, department, OTelLib]]
                 metric_name_selectors: [".*"]
               - dimensions: [[role, team.id, OTelLib]]
                 metric_name_selectors: [".*"]
-              
+
               # Environment tracking
               - dimensions: [[deployment.environment, organization, OTelLib]]
                 metric_name_selectors: [".*"]
-              
+
               # Minimal dimension for overall metrics
               - dimensions: [[OTelLib]]
                 metric_name_selectors: [".*"]
