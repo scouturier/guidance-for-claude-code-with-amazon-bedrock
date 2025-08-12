@@ -382,6 +382,42 @@ Detailed setup guides are available for:
 - [Microsoft Entra ID (Azure AD)](/assets/docs/providers/microsoft-entra-id-setup.md)
 - [Auth0](/assets/docs/providers/auth0-setup.md)
 
+## Development
+
+### CloudFormation Template Validation
+
+This project includes automated validation tools that catch CloudFormation and YAML syntax errors before deployment.
+
+#### Setup Validation Tools
+
+```bash
+cd source
+poetry install  # Installs validation dependencies including pre-commit, yamllint, and cfn-lint
+
+# Install pre-commit hooks
+poetry run pre-commit install
+```
+
+#### How It Works
+
+When you commit changes, the following validations run automatically:
+- **YAML validation** checks syntax in all `.yaml` files
+- **CloudFormation validation** checks template structure and properties
+- **AWS CLI validation** validates templates against AWS specifications (if credentials are configured)
+
+The validation automatically catches:
+- YAML syntax errors that would cause deployment failures
+- CloudFormation template structure problems
+- Missing required parameters or invalid resource configurations
+
+#### Manual Validation (Optional)
+
+To run validation without committing:
+```bash
+cd source
+poetry run pre-commit run --all-files
+```
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
