@@ -4,7 +4,6 @@
 """Input validators for CLI commands."""
 
 import re
-from typing import List
 
 
 def validate_okta_domain(domain: str) -> bool:
@@ -61,7 +60,7 @@ def validate_aws_region(region: str) -> bool:
     return bool(re.match(pattern, region))
 
 
-def validate_bedrock_regions(regions: List[str]) -> bool:
+def validate_bedrock_regions(regions: list[str]) -> bool:
     """Validate list of AWS regions for Bedrock."""
     if not regions:
         return False
