@@ -59,6 +59,9 @@ poetry run ccwb init [options]
 - Checks prerequisites (AWS CLI, credentials, Python version)
 - Prompts for OIDC provider configuration
 - Configures AWS settings (region, identity pool name)
+- Prompts for Claude model selection (Opus, Sonnet, Haiku)
+- Configures cross-region inference profiles (US, Europe, APAC)
+- Prompts for source region selection for model inference
 - Sets up monitoring options
 - Saves configuration to `.ccwb-config/config.json` in the project directory
 
@@ -141,9 +144,12 @@ poetry run ccwb package [options]
   - OIDC provider settings
   - Identity Pool ID from deployed stack
   - Credential storage method (keyring or session)
+  - Selected Claude model and cross-region profile
+  - Source region for model inference
 - Generates installer script
 - Creates user documentation
 - Includes Claude Code telemetry settings (if monitoring enabled)
+- Configures environment variables for model selection (ANTHROPIC_MODEL, ANTHROPIC_SMALL_FAST_MODEL)
 
 **Output structure:**
 
@@ -176,10 +182,15 @@ poetry run ccwb status [options]
 
 **What it does:**
 
-- Shows current configuration
+- Shows current configuration including:
+  - Configuration profile and AWS profile names
+  - OIDC provider and client ID
+  - Selected Claude model and cross-region profile
+  - Source region for model inference
+  - Analytics and monitoring status
 - Checks CloudFormation stack status
 - Displays Identity Pool information
-- Shows monitoring configuration
+- Shows monitoring configuration and endpoints
 
 ### `cleanup` - Remove Installed Components
 

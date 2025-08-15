@@ -3,24 +3,20 @@
 
 """Test command - Verify authentication and access."""
 
-from cleo.commands.command import Command
-from cleo.helpers import option, argument
-import boto3
 import json
-import subprocess
-import time
 import shutil
-import tempfile
-from datetime import datetime
+import subprocess
 from pathlib import Path
+
+from cleo.commands.command import Command
+from cleo.helpers import option
+from rich import box
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich import box
+from rich.table import Table
 
 from claude_code_with_bedrock.config import Config
-from claude_code_with_bedrock.cli.utils.aws import get_stack_outputs, get_bedrock_models
 
 
 class TestCommand(Command):
@@ -64,7 +60,7 @@ class TestCommand(Command):
             console.print(f"[dim]Using package from: {package_dir}[/dim]")
         else:
             console.print("[red]No package found. Run 'poetry run ccwb package' first.[/red]")
-            console.print(f"[dim]Searched in:[/dim]")
+            console.print("[dim]Searched in:[/dim]")
             console.print(f"[dim]  - {source_dist}[/dim]")
             console.print(f"[dim]  - {local_dist}[/dim]")
             return 1
@@ -93,14 +89,14 @@ class TestCommand(Command):
                 return 1
 
             console.print("✓ Installation completed")
-            console.print(f"[dim]  - Executable: ~/claude-code-with-bedrock/credential-process[/dim]")
-            console.print(f"[dim]  - Config: ~/claude-code-with-bedrock/config.json[/dim]")
-            console.print(f"[dim]  - AWS Profile: ClaudeCode[/dim]")
+            console.print("[dim]  - Executable: ~/claude-code-with-bedrock/credential-process[/dim]")
+            console.print("[dim]  - Config: ~/claude-code-with-bedrock/config.json[/dim]")
+            console.print("[dim]  - AWS Profile: ClaudeCode[/dim]")
 
             # Check the installed config to show credential storage method
             installed_config_path = Path.home() / "claude-code-with-bedrock" / "config.json"
             if installed_config_path.exists():
-                with open(installed_config_path, "r") as f:
+                with open(installed_config_path) as f:
                     installed_config = json.load(f)
                     storage_method = installed_config.get("default", {}).get("credential_storage", "session")
                     storage_display = (
@@ -234,7 +230,7 @@ class TestCommand(Command):
             if not aws_config_file.exists():
                 return {"status": "✗", "details": "AWS config file not found"}
 
-            with open(aws_config_file, "r") as f:
+            with open(aws_config_file) as f:
                 content = f.read()
                 if f"[profile {profile_name}]" in content:
                     return {"status": "✓", "details": f"Profile '{profile_name}' found"}
@@ -381,9 +377,9 @@ class TestCommand(Command):
                     elif "Bedrock is not available" in error_msg:
                         return {"status": "✗", "details": f"Bedrock not available in {region} for account {account_id}"}
                     else:
-                        return {"status": "✗", "details": f"Access denied - check IAM permissions"}
+                        return {"status": "✗", "details": "Access denied - check IAM permissions"}
                 elif "UnrecognizedClientException" in error_msg:
-                    return {"status": "✗", "details": f"Invalid credentials or role"}
+                    return {"status": "✗", "details": "Invalid credentials or role"}
                 elif "could not be found" in error_msg:
                     return {"status": "✗", "details": f"Bedrock service not found in {region}"}
                 else:
@@ -467,7 +463,7 @@ class TestCommand(Command):
             if result.returncode == 0:
                 # Check if we got a response
                 try:
-                    with open("/tmp/bedrock-test-output.json", "r") as f:
+                    with open("/tmp/bedrock-test-output.json") as f:
                         response = json.load(f)
                         # Different response formats for different models
                         if "content" in response and len(response["content"]) > 0:

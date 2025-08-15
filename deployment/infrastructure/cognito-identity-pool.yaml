@@ -60,8 +60,8 @@ Parameters:
 
   AllowedBedrockRegions:
     Type: CommaDelimitedList
-    Default: 'us-east-1,us-west-2,us-east-2'
-    Description: Comma-delimited list of AWS regions where Bedrock access is allowed
+    Default: 'us-east-1,us-east-2,us-west-1,us-west-2,eu-west-1,eu-west-3,eu-central-1,eu-north-1,eu-south-1,eu-south-2,ap-northeast-1,ap-southeast-1,ap-southeast-2,ap-southeast-3,ap-south-1'
+    Description: AWS regions allowed for Bedrock access (configured based on selected model and cross-region profile)
 
   EnableMonitoring:
     Type: String
@@ -94,21 +94,17 @@ Resources:
       AllowUnauthenticatedIdentities: true
       AllowClassicFlow: false
       # For External OIDC providers
-      OpenIdConnectProviderARNs:
-        !If
-          - UseExternalOIDC
-          - 
-            - !GetAtt OIDCProvider.Arn
-          - !Ref 'AWS::NoValue'
+      OpenIdConnectProviderARNs: !If
+        - UseExternalOIDC
+        - - !GetAtt OIDCProvider.Arn
+        - !Ref 'AWS::NoValue'
       # For Cognito User Pool
-      CognitoIdentityProviders:
-        !If
-          - UseCognitoUserPool
-          - 
-            - ClientId: !Ref CognitoUserPoolClientId
-              ProviderName: !Sub 'cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPoolId}'
-              ServerSideTokenCheck: true
-          - !Ref 'AWS::NoValue'
+      CognitoIdentityProviders: !If
+        - UseCognitoUserPool
+        - - ClientId: !Ref CognitoUserPoolClientId
+            ProviderName: !Sub 'cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPoolId}'
+            ServerSideTokenCheck: true
+        - !Ref 'AWS::NoValue'
 
   # IAM OIDC Provider (only for External OIDC)
   OIDCProvider:
@@ -123,10 +119,12 @@ Resources:
         - '0000000000000000000000000000000000000000'
 
   # Managed Policy for Bedrock Access
+  # Note: Cross-region inference requires access to all regions in the profile (us-east-1, us-east-2, us-west-2)
+  # as requests may be routed to any of these regions automatically
   BedrockAccessPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
-      Description: Policy for Cognito authenticated users to access Bedrock
+      Description: Policy for Cognito authenticated users to access Bedrock via cross-region inference
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -232,20 +230,18 @@ Resources:
     DeletionPolicy: Delete
     Properties:
       IdentityPoolId: !Ref BedrockIdentityPool
-      IdentityProviderName: 
-        !If
-          - UseExternalOIDC
-          - !Ref OIDCProviderDomain
-          - !Sub 'cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPoolId}'
+      IdentityProviderName: !If
+        - UseExternalOIDC
+        - !Ref OIDCProviderDomain
+        - !Sub 'cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPoolId}'
       UseDefaults: false
       PrincipalTags:
         UserEmail: email
         UserId: sub
-        UserName: 
-          !If
-            - UseCognitoUserPool
-            - preferred_username
-            - name
+        UserName: !If
+          - UseCognitoUserPool
+          - preferred_username
+          - name
 
   # CloudWatch Log Group for Bedrock Access Tracking
   BedrockAccessLogGroup:
@@ -389,26 +385,25 @@ Outputs:
 
   ConfigurationJson:
     Description: Configuration JSON for CLI tool
-    Value: 
-      !If
-        - UseExternalOIDC
-        - !Sub |
-            {
-              "provider_domain": "${OIDCProviderDomain}",
-              "client_id": "${OIDCClientId}",
-              "identity_pool_id": "${BedrockIdentityPool}",
-              "aws_region": "${AWS::Region}",
-              "provider_type": "${OIDCProviderType}"
-            }
-        - !Sub |
-            {
-              "provider_domain": "TBD - Use your Cognito User Pool domain",
-              "client_id": "${CognitoUserPoolClientId}",
-              "identity_pool_id": "${BedrockIdentityPool}",
-              "aws_region": "${AWS::Region}",
-              "provider_type": "cognito",
-              "cognito_user_pool_id": "${CognitoUserPoolId}"
-            }
+    Value: !If
+      - UseExternalOIDC
+      - !Sub |
+        {
+          "provider_domain": "${OIDCProviderDomain}",
+          "client_id": "${OIDCClientId}",
+          "identity_pool_id": "${BedrockIdentityPool}",
+          "aws_region": "${AWS::Region}",
+          "provider_type": "${OIDCProviderType}"
+        }
+      - !Sub |
+        {
+          "provider_domain": "TBD - Use your Cognito User Pool domain",
+          "client_id": "${CognitoUserPoolClientId}",
+          "identity_pool_id": "${BedrockIdentityPool}",
+          "aws_region": "${AWS::Region}",
+          "provider_type": "cognito",
+          "cognito_user_pool_id": "${CognitoUserPoolId}"
+        }
 
   BedrockLogGroupName:
     Description: CloudWatch Log Group for Bedrock access tracking

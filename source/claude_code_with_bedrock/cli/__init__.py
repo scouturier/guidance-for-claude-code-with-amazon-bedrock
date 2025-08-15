@@ -4,16 +4,15 @@
 """Command-line interface for Claude Code with Bedrock."""
 
 from cleo.application import Application
-from cleo.commands.command import Command
-from cleo.helpers import argument, option
 
-from .commands.init import InitCommand
+from .commands.cleanup import CleanupCommand
 from .commands.deploy import DeployCommand
+from .commands.destroy import DestroyCommand
+from .commands.init import InitCommand
+from .commands.package import PackageCommand
 from .commands.status import StatusCommand
 from .commands.test import TestCommand
-from .commands.package import PackageCommand
-from .commands.destroy import DestroyCommand
-from .commands.cleanup import CleanupCommand
+
 # TokenCommand temporarily disabled - not implemented
 
 
@@ -23,7 +22,7 @@ def create_application() -> Application:
         "claude-code-with-bedrock",
         "1.0.0"
     )
-    
+
     # Add commands
     application.add(InitCommand())
     application.add(DeployCommand())
@@ -33,7 +32,7 @@ def create_application() -> Application:
     application.add(DestroyCommand())
     application.add(CleanupCommand())
     # application.add(TokenCommand())  # Temporarily disabled
-    
+
     return application
 
 

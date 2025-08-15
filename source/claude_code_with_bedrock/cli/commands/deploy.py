@@ -4,25 +4,25 @@
 """Deploy command - Deploy AWS infrastructure."""
 
 import subprocess
-import json
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional
+
 from cleo.commands.command import Command
-from cleo.helpers import option, argument
+from cleo.helpers import argument, option
+from rich import box
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich import box
+from rich.table import Table
 
+from claude_code_with_bedrock.cli.utils.aws import get_stack_outputs
 from claude_code_with_bedrock.config import Config
-from claude_code_with_bedrock.cli.utils.aws import check_stack_exists, get_stack_outputs
 
 
 class DeployCommand(Command):
     name = "deploy"
     description = "Deploy AWS infrastructure (auth, monitoring, dashboards)"
-    
+
     arguments = [
         argument(
             "stack",
@@ -30,7 +30,7 @@ class DeployCommand(Command):
             optional=True
         )
     ]
-    
+
     options = [
         option(
             "profile",
@@ -49,12 +49,12 @@ class DeployCommand(Command):
             flag=True
         )
     ]
-    
-    
+
+
     def handle(self) -> int:
         """Execute the deploy command."""
         console = Console()
-        
+
         # Welcome
         console.print(Panel.fit(
             "[bold cyan]Claude Code Infrastructure Deployment[/bold cyan]\n\n"
@@ -62,26 +62,26 @@ class DeployCommand(Command):
             border_style="cyan",
             padding=(1, 2)
         ))
-        
+
         # Load configuration
         config = Config.load()
-        
+
         # Get profile name
         profile_name = self.option("profile")
         profile = config.get_profile(profile_name)
-        
+
         if not profile:
             console.print(f"[red]Profile '{profile_name}' not found. Run 'poetry run ccwb init' first.[/red]")
             return 1
-        
+
         # Get deployment options
         stack_arg = self.argument("stack")
         dry_run = self.option("dry-run")
         show_commands = self.option("show-commands")
-        
+
         # Determine which stacks to deploy
         stacks_to_deploy = []
-        
+
         if stack_arg:
             # Deploy specific stack
             if stack_arg == "auth":
@@ -124,33 +124,33 @@ class DeployCommand(Command):
                 # Check if analytics is enabled (default to True for backward compatibility)
                 if getattr(profile, 'analytics_enabled', True):
                     stacks_to_deploy.append(("analytics", "Analytics Pipeline (Kinesis Firehose + Athena)"))
-        
+
         # Show deployment plan
         console.print("\n[bold]Deployment Plan:[/bold]")
         table = Table(box=box.SIMPLE)
         table.add_column("Stack", style="cyan")
         table.add_column("Description")
         table.add_column("Status")
-        
+
         for stack_type, description in stacks_to_deploy:
             stack_name = profile.stack_names.get(stack_type, f"{profile.identity_pool_name}-{stack_type}")
             exists = self._check_stack_exists(stack_name, profile.aws_region)
             status = "[green]Update[/green]" if exists else "[yellow]Create[/yellow]"
             table.add_row(stack_type, description, status)
-        
+
         console.print(table)
-        
+
         if dry_run:
             console.print("\n[yellow]Dry run mode - no changes will be made[/yellow]")
             return 0
-        
+
         # Deploy stacks
         console.print("\n[bold]Deploying stacks...[/bold]\n")
-        
+
         failed = False
         for stack_type, description in stacks_to_deploy:
             console.print(f"[bold]{description}[/bold]")
-            
+
             if show_commands:
                 self._show_deployment_commands(stack_type, profile)
                 console.print("")
@@ -161,20 +161,20 @@ class DeployCommand(Command):
                     console.print(f"[red]Failed to deploy {stack_type} stack[/red]")
                     break
                 console.print("")
-        
+
         if failed:
             console.print("\n[red]Deployment failed. Check the errors above.[/red]")
             return 1
-        
+
         # Show summary
         console.print("\n[bold green]Deployment complete![/bold green]")
-        
+
         if not show_commands:
             console.print("\n[bold]Stack Outputs:[/bold]")
             self._show_stack_outputs(profile, console)
-        
+
         return 0
-    
+
     def _check_stack_exists(self, stack_name: str, region: str) -> bool:
         """Check if a CloudFormation stack exists and is in a valid state."""
         try:
@@ -185,7 +185,7 @@ class DeployCommand(Command):
                 "--query", "Stacks[0].StackStatus",
                 "--output", "text"
             ]
-            
+
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode == 0:
                 status = result.stdout.strip()
@@ -212,65 +212,65 @@ class DeployCommand(Command):
             return False
         except:
             return False
-    
+
     def _show_deployment_commands(self, stack_type: str, profile) -> None:
         """Show AWS CLI commands for manual deployment."""
         console = Console()
-        
+
         # The infrastructure files are at the repository root, not in source
         # Go up from deploy.py -> commands -> cli -> claude_code_with_bedrock -> source -> repo root
         project_root = Path(__file__).parents[4]
-        
+
         # Helper function to get networking outputs
         def get_networking_outputs():
             networking_stack_name = profile.stack_names.get("networking", f"{profile.identity_pool_name}-networking")
             return get_stack_outputs(networking_stack_name, profile.aws_region)
-        
+
         if stack_type == "auth":
             template = project_root / "deployment" / "infrastructure" / "cognito-identity-pool.yaml"
             stack_name = profile.stack_names.get("auth", f"{profile.identity_pool_name}-stack")
-            
+
             # Build parameters based on provider type
             params = []
-            
+
             # Check if this is a Cognito User Pool provider
             if profile.provider_type == 'cognito':
                 params.extend([
-                    f"ParameterKey=AuthProviderType,ParameterValue=CognitoUserPool",
+                    "ParameterKey=AuthProviderType,ParameterValue=CognitoUserPool",
                     f"ParameterKey=CognitoUserPoolId,ParameterValue={profile.cognito_user_pool_id}",
                     f"ParameterKey=CognitoUserPoolClientId,ParameterValue={profile.client_id}",
                 ])
             else:
                 # External OIDC provider
                 params.extend([
-                    f"ParameterKey=AuthProviderType,ParameterValue=ExternalOIDC",
+                    "ParameterKey=AuthProviderType,ParameterValue=ExternalOIDC",
                     f"ParameterKey=OIDCProviderDomain,ParameterValue={profile.provider_domain}",
                     f"ParameterKey=OIDCClientId,ParameterValue={profile.client_id}",
                 ])
-            
+
             # Common parameters
             params.extend([
                 f"ParameterKey=IdentityPoolName,ParameterValue={profile.identity_pool_name}",
                 f"ParameterKey=AllowedBedrockRegions,ParameterValue=\"{','.join(profile.allowed_bedrock_regions)}\"",
                 f"ParameterKey=EnableMonitoring,ParameterValue={str(profile.monitoring_enabled).lower()}",
-                f"ParameterKey=EnableBedrockTracking,ParameterValue=true"
+                "ParameterKey=EnableBedrockTracking,ParameterValue=true"
             ])
-            
-            console.print(f"[dim]# Deploy authentication stack[/dim]")
-            console.print(f"aws cloudformation deploy \\")
+
+            console.print("[dim]# Deploy authentication stack[/dim]")
+            console.print("aws cloudformation deploy \\")
             console.print(f"  --template-file {template} \\")
             console.print(f"  --stack-name {stack_name} \\")
-            console.print(f"  --capabilities CAPABILITY_NAMED_IAM \\")
+            console.print("  --capabilities CAPABILITY_NAMED_IAM \\")
             console.print(f"  --region {profile.aws_region} \\")
-            console.print(f"  --parameter-overrides \\")
+            console.print("  --parameter-overrides \\")
             for param in params:
                 console.print(f"    {param} \\")
             console.print("")
-        
+
         elif stack_type == "networking":
             template = project_root / "deployment" / "infrastructure" / "networking.yaml"
             stack_name = profile.stack_names.get("networking", f"{profile.identity_pool_name}-networking")
-            
+
             # VPC CIDR parameters
             vpc_config = profile.monitoring_config or {}
             params = [
@@ -278,66 +278,66 @@ class DeployCommand(Command):
                 f"ParameterKey=PublicSubnet1Cidr,ParameterValue={vpc_config.get('subnet1_cidr', '10.0.1.0/24')}",
                 f"ParameterKey=PublicSubnet2Cidr,ParameterValue={vpc_config.get('subnet2_cidr', '10.0.2.0/24')}"
             ]
-            
-            console.print(f"[dim]# Deploy networking infrastructure[/dim]")
-            console.print(f"aws cloudformation deploy \\")
+
+            console.print("[dim]# Deploy networking infrastructure[/dim]")
+            console.print("aws cloudformation deploy \\")
             console.print(f"  --template-file {template} \\")
             console.print(f"  --stack-name {stack_name} \\")
-            console.print(f"  --capabilities CAPABILITY_IAM \\")
+            console.print("  --capabilities CAPABILITY_IAM \\")
             console.print(f"  --region {profile.aws_region} \\")
             if params:
-                console.print(f"  --parameter-overrides \\")
+                console.print("  --parameter-overrides \\")
                 for param in params:
                     console.print(f"    {param} \\")
             console.print("")
-            
+
         elif stack_type == "monitoring":
             template = project_root / "deployment" / "infrastructure" / "otel-collector.yaml"
             stack_name = profile.stack_names.get("monitoring", f"{profile.identity_pool_name}-otel-collector")
-            
+
             # Get VPC ID and subnet IDs from networking stack
             networking_outputs = get_networking_outputs()
-            
+
             params = []
             if networking_outputs:
                 vpc_id = networking_outputs.get('VpcId', '')
                 subnet_ids = networking_outputs.get('SubnetIds', '')
                 params.append(f"ParameterKey=VpcId,ParameterValue={vpc_id}")
                 params.append(f"ParameterKey=SubnetIds,ParameterValue=\"{subnet_ids}\"")
-            
+
             # Add HTTPS domain parameters if configured
             vpc_config = profile.monitoring_config or {}
             if vpc_config.get('custom_domain'):
                 params.append(f"ParameterKey=CustomDomainName,ParameterValue={vpc_config['custom_domain']}")
                 params.append(f"ParameterKey=HostedZoneId,ParameterValue={vpc_config['hosted_zone_id']}")
-            
-            console.print(f"[dim]# Deploy monitoring collector[/dim]")
-            console.print(f"aws cloudformation deploy \\")
+
+            console.print("[dim]# Deploy monitoring collector[/dim]")
+            console.print("aws cloudformation deploy \\")
             console.print(f"  --template-file {template} \\")
             console.print(f"  --stack-name {stack_name} \\")
-            console.print(f"  --capabilities CAPABILITY_IAM \\")
+            console.print("  --capabilities CAPABILITY_IAM \\")
             console.print(f"  --region {profile.aws_region} \\")
             if params:
-                console.print(f"  --parameter-overrides \\")
+                console.print("  --parameter-overrides \\")
                 for param in params:
                     console.print(f"    {param} \\")
             console.print("")
-            
+
         elif stack_type == "dashboard":
             template = project_root / "deployment" / "infrastructure" / "monitoring-dashboard.yaml"
             stack_name = profile.stack_names.get("dashboard", f"{profile.identity_pool_name}-dashboard")
-            
-            console.print(f"[dim]# Deploy monitoring dashboard[/dim]")
-            console.print(f"aws cloudformation deploy \\")
+
+            console.print("[dim]# Deploy monitoring dashboard[/dim]")
+            console.print("aws cloudformation deploy \\")
             console.print(f"  --template-file {template} \\")
             console.print(f"  --stack-name {stack_name} \\")
             console.print(f"  --region {profile.aws_region}")
             console.print("")
-            
+
         elif stack_type == "analytics":
             template = project_root / "deployment" / "infrastructure" / "analytics-pipeline.yaml"
             stack_name = profile.stack_names.get("analytics", f"{profile.identity_pool_name}-analytics")
-            
+
             # Build parameters from profile configuration
             params = [
                 f"ParameterKey=MetricsLogGroup,ParameterValue={profile.metrics_log_group}",
@@ -345,61 +345,61 @@ class DeployCommand(Command):
                 f"ParameterKey=FirehoseBufferInterval,ParameterValue={profile.firehose_buffer_interval}",
                 f"ParameterKey=DebugMode,ParameterValue={str(profile.analytics_debug_mode).lower()}"
             ]
-            
-            console.print(f"[dim]# Deploy analytics pipeline[/dim]")
-            console.print(f"aws cloudformation deploy \\")
+
+            console.print("[dim]# Deploy analytics pipeline[/dim]")
+            console.print("aws cloudformation deploy \\")
             console.print(f"  --template-file {template} \\")
             console.print(f"  --stack-name {stack_name} \\")
-            console.print(f"  --capabilities CAPABILITY_IAM \\")
+            console.print("  --capabilities CAPABILITY_IAM \\")
             console.print(f"  --region {profile.aws_region} \\")
-            console.print(f"  --parameter-overrides \\")
+            console.print("  --parameter-overrides \\")
             for param in params:
                 console.print(f"    {param} \\")
             console.print("")
-    
+
     def _deploy_stack(self, stack_type: str, profile, console: Console) -> int:
         """Deploy a CloudFormation stack."""
         # The infrastructure files are at the repository root, not in source
         # Go up from deploy.py -> commands -> cli -> claude_code_with_bedrock -> source -> repo root
         project_root = Path(__file__).parents[4]
-        
+
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             console=console
         ) as progress:
-            
+
             if stack_type == "auth":
                 task = progress.add_task("Deploying authentication stack...", total=None)
-                
+
                 template = project_root / "deployment" / "infrastructure" / "cognito-identity-pool.yaml"
                 stack_name = profile.stack_names.get("auth", f"{profile.identity_pool_name}-stack")
-                
+
                 # Build parameters based on provider type - use simple Key=Value format
                 params = []
-                
+
                 # Check if this is a Cognito User Pool provider
                 if profile.provider_type == 'cognito':
                     params.extend([
-                        f"AuthProviderType=CognitoUserPool",
+                        "AuthProviderType=CognitoUserPool",
                         f"CognitoUserPoolId={profile.cognito_user_pool_id}",
                         f"CognitoUserPoolClientId={profile.client_id}",
                     ])
                 else:
                     # External OIDC provider
                     params.extend([
-                        f"AuthProviderType=ExternalOIDC",
+                        "AuthProviderType=ExternalOIDC",
                         f"OIDCProviderDomain={profile.provider_domain}",
                         f"OIDCClientId={profile.client_id}",
                     ])
-                
+
                 # Common parameters
                 params.extend([
                     f"IdentityPoolName={profile.identity_pool_name}",
                     f"AllowedBedrockRegions={','.join(profile.allowed_bedrock_regions)}",
                     f"EnableMonitoring={str(profile.monitoring_enabled).lower()}"
                 ])
-                
+
                 cmd = [
                     "aws", "cloudformation", "deploy",
                     "--template-file", str(template),
@@ -408,13 +408,13 @@ class DeployCommand(Command):
                     "--region", profile.aws_region,
                     "--parameter-overrides"
                 ] + params
-                
+
             elif stack_type == "networking":
                 task = progress.add_task("Deploying networking infrastructure...", total=None)
-                
+
                 template = project_root / "deployment" / "infrastructure" / "networking.yaml"
                 stack_name = profile.stack_names.get("networking", f"{profile.identity_pool_name}-networking")
-                
+
                 # VPC CIDR parameters
                 vpc_config = profile.monitoring_config or {}
                 params = [
@@ -422,7 +422,7 @@ class DeployCommand(Command):
                     f"PublicSubnet1Cidr={vpc_config.get('subnet1_cidr', '10.0.1.0/24')}",
                     f"PublicSubnet2Cidr={vpc_config.get('subnet2_cidr', '10.0.2.0/24')}"
                 ]
-                
+
                 cmd = [
                     "aws", "cloudformation", "deploy",
                     "--template-file", str(template),
@@ -430,30 +430,30 @@ class DeployCommand(Command):
                     "--region", profile.aws_region,
                     "--parameter-overrides"
                 ] + params
-            
+
             elif stack_type == "monitoring":
                 task = progress.add_task("Deploying monitoring collector...", total=None)
-                
+
                 template = project_root / "deployment" / "infrastructure" / "otel-collector.yaml"
                 stack_name = profile.stack_names.get("monitoring", f"{profile.identity_pool_name}-otel-collector")
-                
+
                 # Get VPC ID and subnet IDs from networking stack
                 networking_stack_name = profile.stack_names.get("networking", f"{profile.identity_pool_name}-networking")
                 networking_outputs = get_stack_outputs(networking_stack_name, profile.aws_region)
-                
+
                 params = []
                 if networking_outputs:
                     vpc_id = networking_outputs.get('VpcId', '')
                     subnet_ids = networking_outputs.get('SubnetIds', '')
                     params.append(f"VpcId={vpc_id}")
                     params.append(f"SubnetIds={subnet_ids}")
-                
+
                 # Add HTTPS domain parameters if configured
                 monitoring_config = getattr(profile, 'monitoring_config', {})
                 if monitoring_config.get('custom_domain'):
                     params.append(f"CustomDomainName={monitoring_config['custom_domain']}")
                     params.append(f"HostedZoneId={monitoring_config['hosted_zone_id']}")
-                
+
                 cmd = [
                     "aws", "cloudformation", "deploy",
                     "--template-file", str(template),
@@ -463,26 +463,26 @@ class DeployCommand(Command):
                 ]
                 if params:
                     cmd.extend(["--parameter-overrides"] + params)
-                
+
             elif stack_type == "dashboard":
                 task = progress.add_task("Deploying monitoring dashboard...", total=None)
-                
+
                 template = project_root / "deployment" / "infrastructure" / "monitoring-dashboard.yaml"
                 stack_name = profile.stack_names.get("dashboard", f"{profile.identity_pool_name}-dashboard")
-                
+
                 cmd = [
                     "aws", "cloudformation", "deploy",
                     "--template-file", str(template),
                     "--stack-name", stack_name,
                     "--region", profile.aws_region
                 ]
-                
+
             elif stack_type == "analytics":
                 task = progress.add_task("Deploying analytics pipeline...", total=None)
-                
+
                 template = project_root / "deployment" / "infrastructure" / "analytics-pipeline.yaml"
                 stack_name = profile.stack_names.get("analytics", f"{profile.identity_pool_name}-analytics")
-                
+
                 # Build parameters from profile configuration
                 params = [
                     f"MetricsLogGroup={profile.metrics_log_group}",
@@ -490,7 +490,7 @@ class DeployCommand(Command):
                     f"FirehoseBufferInterval={profile.firehose_buffer_interval}",
                     f"DebugMode={str(profile.analytics_debug_mode).lower()}"
                 ]
-                
+
                 cmd = [
                     "aws", "cloudformation", "deploy",
                     "--template-file", str(template),
@@ -499,24 +499,24 @@ class DeployCommand(Command):
                     "--region", profile.aws_region,
                     "--parameter-overrides"
                 ] + params
-            
+
             # Execute deployment
             # For debugging, let's also show what command we're running
             if self.option("show-commands"):
                 console.print(f"\n[dim]Executing: {' '.join(cmd)}[/dim]\n")
-            
+
             result = subprocess.run(cmd, capture_output=True, text=True)
             progress.update(task, completed=True)
-            
+
             if result.returncode == 0:
                 console.print(f"[green]✓ {stack_type} stack deployed successfully[/green]")
                 return 0
             else:
                 console.print(f"[red]✗ Failed to deploy {stack_type} stack[/red]")
-                
+
                 # Get detailed error from stack events
                 error_details = self._get_stack_failure_reason(stack_name, profile.aws_region)
-                
+
                 # Parse and provide helpful error messages
                 error_output = error_details or result.stderr or result.stdout
                 if error_output:
@@ -544,7 +544,7 @@ class DeployCommand(Command):
                     elif "ROLLBACK_COMPLETE" in error_output:
                         console.print("\n[yellow]Error: Stack is in ROLLBACK_COMPLETE state.[/yellow]")
                         console.print("To resolve:")
-                        console.print(f"1. Delete the failed stack:")
+                        console.print("1. Delete the failed stack:")
                         console.print(f"   [cyan]aws cloudformation delete-stack --stack-name {stack_name} --region {profile.aws_region}[/cyan]")
                         console.print("\n2. Wait for deletion to complete:")
                         console.print(f"   [cyan]aws cloudformation wait stack-delete-complete --stack-name {stack_name} --region {profile.aws_region}[/cyan]")
@@ -552,12 +552,12 @@ class DeployCommand(Command):
                     else:
                         # Show the raw error for other cases
                         console.print(f"\n[dim]{error_output}[/dim]")
-                        console.print(f"\n[yellow]To see detailed error information, run:[/yellow]")
+                        console.print("\n[yellow]To see detailed error information, run:[/yellow]")
                         console.print(f"[cyan]aws cloudformation describe-stack-events --stack-name {stack_name} --region {profile.aws_region} --query 'StackEvents[?ResourceStatus==`CREATE_FAILED`]' --output table[/cyan]")
                         console.print("\nFor troubleshooting help, see: assets/docs/TROUBLESHOOTING.md")
-                        
+
                 return 1
-    
+
     def _get_stack_failure_reason(self, stack_name: str, region: str) -> Optional[str]:
         """Get the failure reason from CloudFormation stack events."""
         try:
@@ -568,19 +568,19 @@ class DeployCommand(Command):
                 "--region", region,
                 "--output", "json"
             ]
-            
+
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode == 0 and result.stdout:
                 import json
                 data = json.loads(result.stdout)
                 events = data.get("StackEvents", [])
-                
+
                 # Find the root cause - look for the first CREATE_FAILED that's not "Resource creation cancelled"
                 failures = []
                 for event in events:
                     status = event.get("ResourceStatus", "")
                     reason = event.get("ResourceStatusReason", "")
-                    
+
                     if status in ["CREATE_FAILED", "UPDATE_FAILED"]:
                         # Skip generic "cancelled" messages
                         if "cancelled" not in reason.lower():
@@ -589,7 +589,7 @@ class DeployCommand(Command):
                             failures.append(f"{resource_type} ({logical_id}): {reason}")
                             # Return the first real failure we find
                             return failures[0]
-                
+
                 # If we only found cancelled messages, return them anyway
                 if not failures:
                     for event in events:
@@ -598,62 +598,62 @@ class DeployCommand(Command):
                             logical_id = event.get("LogicalResourceId", "Unknown")
                             reason = event.get("ResourceStatusReason", "Unknown error")
                             return f"{resource_type} ({logical_id}): {reason}"
-            
+
             return None
         except Exception as e:
             return f"Error fetching stack events: {str(e)}"
-    
+
     def _show_stack_outputs(self, profile, console: Console) -> None:
         """Show outputs from deployed stacks."""
         # Get auth stack outputs
         auth_stack = profile.stack_names.get("auth", f"{profile.identity_pool_name}-stack")
         outputs = get_stack_outputs(auth_stack, profile.aws_region)
-        
+
         if outputs:
             console.print("\n[bold]Authentication Stack:[/bold]")
             console.print(f"• Identity Pool ID: [cyan]{outputs.get('IdentityPoolId', 'N/A')}[/cyan]")
             console.print(f"• Role ARN: [cyan]{outputs.get('BedrockRoleArn', 'N/A')}[/cyan]")
             console.print(f"• OIDC Provider: [cyan]{outputs.get('OIDCProviderArn', 'N/A')}[/cyan]")
-        
+
         # Get networking outputs if enabled
         if profile.monitoring_enabled:
             networking_stack = profile.stack_names.get("networking", f"{profile.identity_pool_name}-networking")
             networking_outputs = get_stack_outputs(networking_stack, profile.aws_region)
-            
+
             if networking_outputs:
                 console.print("\n[bold]Networking Stack:[/bold]")
                 vpc_id = networking_outputs.get('VpcId', 'N/A')
                 subnet_ids = networking_outputs.get('SubnetIds', 'N/A')
                 console.print(f"• VPC ID: [cyan]{vpc_id}[/cyan]")
                 console.print(f"• Subnet IDs: [cyan]{subnet_ids}[/cyan]")
-        
+
             # Get monitoring stack endpoint
             monitoring_stack = profile.stack_names.get("monitoring", f"{profile.identity_pool_name}-otel-collector")
             monitoring_outputs = get_stack_outputs(monitoring_stack, profile.aws_region)
-            
+
             if monitoring_outputs:
                 console.print("\n[bold]Monitoring Stack:[/bold]")
                 endpoint = monitoring_outputs.get('CollectorEndpoint', 'N/A')
                 console.print(f"• OTLP Endpoint: [cyan]{endpoint}[/cyan]")
                 if endpoint.startswith('https://'):
-                    console.print(f"• Security: [cyan]HTTPS encryption[/cyan]")
+                    console.print("• Security: [cyan]HTTPS encryption[/cyan]")
                 else:
-                    console.print(f"• Security: [yellow]HTTP (unencrypted)[/yellow]")
-            
+                    console.print("• Security: [yellow]HTTP (unencrypted)[/yellow]")
+
             dashboard_stack = profile.stack_names.get("dashboard", f"{profile.identity_pool_name}-dashboard")
             dashboard_outputs = get_stack_outputs(dashboard_stack, profile.aws_region)
-            
+
             if dashboard_outputs:
                 console.print("\n[bold]Dashboard Stack:[/bold]")
                 dashboard_url = dashboard_outputs.get('DashboardURL', '')
                 if dashboard_url:
                     console.print(f"• Dashboard URL: [cyan][link={dashboard_url}]{dashboard_url}[/link][/cyan]")
-                    
+
             # Get analytics outputs if enabled
             if getattr(profile, 'analytics_enabled', True):
                 analytics_stack = profile.stack_names.get("analytics", f"{profile.identity_pool_name}-analytics")
                 analytics_outputs = get_stack_outputs(analytics_stack, profile.aws_region)
-                
+
                 if analytics_outputs:
                     console.print("\n[bold]Analytics Stack:[/bold]")
                     athena_url = analytics_outputs.get('AthenaConsoleUrl', '')

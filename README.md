@@ -169,7 +169,14 @@ The guidance can be deployed in any AWS region that supports:
 - Amazon Bedrock
 - (Optional) Amazon ECS Fargate for monitoring
 
-Users can access Bedrock in any region you configure during setup, regardless of where the authentication infrastructure is deployed.
+### Cross-Region Inference
+
+Claude Code uses Amazon Bedrock's cross-region inference for optimal performance and availability. During setup, you can:
+- Select your preferred Claude model (Opus, Sonnet, Haiku)
+- Choose a cross-region profile (US, Europe, APAC) for optimal regional routing
+- Select a specific source region within your profile for model inference
+
+This automatically routes requests across multiple AWS regions to ensure the best response times and highest availability. Modern Claude models (3.7+) require cross-region inference for access.
 
 ## Implementation
 
@@ -185,7 +192,7 @@ The wizard will guide you through:
 
 - OIDC provider configuration (domain, client ID)
 - AWS region selection for infrastructure
-- Amazon Bedrock region access configuration
+- Amazon Bedrock cross-region inference configuration
 - Credential storage method (keyring or session files)
 - Optional monitoring setup with VPC configuration
 

@@ -289,6 +289,7 @@ class InitCommand(Command):
                     f"Enter your Cognito User Pool ID{region_hint}:",
                     validate=validate_cognito_user_pool_id,
                     instruction="(case-sensitive)",
+                    default=config.get("cognito_user_pool_id", ""),
                 ).ask()
 
                 if not cognito_user_pool_id:
@@ -455,55 +456,180 @@ class InitCommand(Command):
             # Save progress
             progress.save_step("monitoring_complete", config)
 
-        # Bedrock regions - get available regions
+        # Bedrock model and cross-region configuration
         if not skip_bedrock:
-            console.print("\n[bold blue]Step 3: Bedrock Access Configuration[/bold blue]")
+            console.print("\n[bold blue]Step 3: Bedrock Model Selection[/bold blue]")
             console.print("─" * 40)
 
-            # Region names for better UX
-            region_names = {
-                "us-east-1": "US East (N. Virginia)",
-                "us-east-2": "US East (Ohio)",
-                "us-west-2": "US West (Oregon)",
-                "eu-west-1": "Europe (Ireland)",
-                "eu-west-3": "Europe (Paris)",
-                "eu-central-1": "Europe (Frankfurt)",
-                "ap-northeast-1": "Asia Pacific (Tokyo)",
-                "ap-southeast-1": "Asia Pacific (Singapore)",
-                "ap-southeast-2": "Asia Pacific (Sydney)",
-                "ap-south-1": "Asia Pacific (Mumbai)",
-                "ca-central-1": "Canada (Central)",
-            }
-
-            available_regions = self._get_bedrock_regions()
-
-            # Get saved selections or default to current region
-            saved_bedrock_regions = config.get("aws", {}).get("allowed_bedrock_regions", [])
-            region = config.get("aws", {}).get("region", get_current_region())
-
-            # Pre-select saved regions or current region
-            default_selections = (
-                saved_bedrock_regions if saved_bedrock_regions else ([region] if region in available_regions else [])
+            # Import centralized model configuration
+            from claude_code_with_bedrock.models import (
+                CLAUDE_MODELS,
+                get_available_profiles_for_model,
+                get_destination_regions_for_model_profile,
+                get_model_id_for_profile,
+                get_profile_description,
+                get_source_regions_for_model_profile,
             )
 
-            bedrock_regions = questionary.checkbox(
-                "Select AWS regions where users can access Bedrock models:",
-                choices=[
+            # Check for saved model
+            saved_model = config.get("aws", {}).get("selected_model")
+            saved_model_key = None
+            if saved_model:
+                # Find the key for the saved model by checking all model IDs
+                for key, model_info in CLAUDE_MODELS.items():
+                    for profile_key, profile_config in model_info["profiles"].items():
+                        if profile_config["model_id"] == saved_model:
+                            saved_model_key = key
+                            break
+                    if saved_model_key:
+                        break
+
+            # Step 1: Select Claude model
+            model_choices = []
+            for model_key, model_info in CLAUDE_MODELS.items():
+                # Build region list from available profiles
+                available_profiles = get_available_profiles_for_model(model_key)
+                regions = []
+                if "us" in available_profiles:
+                    regions.append("US")
+                if "europe" in available_profiles:
+                    regions.append("Europe")
+                if "apac" in available_profiles:
+                    regions.append("APAC")
+                regions_text = ", ".join(regions)
+
+                choice_text = f"{model_info['name']} ({regions_text})"
+                model_choices.append(
                     questionary.Choice(
-                        title=f"{r} - {region_names.get(r, r)}", value=r, checked=(r in default_selections)
+                        title=choice_text,
+                        value=model_key,
+                        checked=(
+                            model_key == saved_model_key or (not saved_model_key and model_key == "opus-4-1")
+                        ),  # Default to Opus 4.1
                     )
-                    for r in available_regions
-                ],
-                instruction="(Users will be able to use Claude in these regions. Use space to select/deselect, Enter to confirm)",
+                )
+
+            selected_model_key = questionary.select(
+                "Select Claude model:",
+                choices=model_choices,
+                instruction="(Use arrow keys to select, Enter to confirm)",
             ).ask()
 
-            if bedrock_regions is None:  # User cancelled
+            if selected_model_key is None:  # User cancelled
                 return None
 
-            if not bedrock_regions:
-                bedrock_regions = [region]
+            selected_model = CLAUDE_MODELS[selected_model_key]
+            # Don't set the model ID yet - we need to adjust it based on the region profile
 
-            config["aws"]["allowed_bedrock_regions"] = bedrock_regions
+            # Step 2: Select cross-region profile based on model
+            console.print(f"\n[green]Selected:[/green] {selected_model['name']}")
+
+            available_profiles = get_available_profiles_for_model(selected_model_key)
+
+            # Check for saved profile
+            saved_profile = config.get("aws", {}).get("cross_region_profile")
+            if saved_profile not in available_profiles:
+                saved_profile = available_profiles[0]  # Default to first available
+
+            # Always show the selection, even if there's only one option
+            profile_choices = []
+            for profile_key in available_profiles:
+                # Get model-specific description
+                description = get_profile_description(selected_model_key, profile_key)
+                profile_name = profile_key.upper() if profile_key != "us" else "US"
+                choice_text = f"{profile_name} Cross-Region - {description}"
+                profile_choices.append(
+                    questionary.Choice(title=choice_text, value=profile_key, checked=(profile_key == saved_profile))
+                )
+
+            # Adjust the prompt based on number of options
+            if len(available_profiles) == 1:
+                prompt_text = "Cross-region inference profile for this model:"
+                instruction_text = "(Press Enter to continue)"
+            else:
+                prompt_text = "Select cross-region inference profile:"
+                instruction_text = "(Use arrow keys to select, Enter to confirm)"
+
+            selected_profile = questionary.select(
+                prompt_text, choices=profile_choices, instruction=instruction_text
+            ).ask()
+
+            if selected_profile is None:  # User cancelled
+                return None
+
+            # Get the correct model ID for the selected profile
+            model_id = get_model_id_for_profile(selected_model_key, selected_profile)
+            config["aws"]["selected_model"] = model_id
+            config["aws"]["cross_region_profile"] = selected_profile
+
+            # Get destination regions for the model/profile combination
+            destination_regions = get_destination_regions_for_model_profile(selected_model_key, selected_profile)
+
+            # For now, use a default set of regions until the TODO regions are filled in
+            # This ensures the system still works during the transition
+            if not destination_regions:  # Empty list means TODO regions not filled yet
+                default_region_sets = {
+                    "us": ["us-east-1", "us-east-2", "us-west-2"],
+                    "europe": ["eu-west-1", "eu-west-3", "eu-central-1", "eu-north-1"],
+                    "apac": ["ap-northeast-1", "ap-southeast-1", "ap-southeast-2", "ap-south-1"],
+                }
+                config["aws"]["allowed_bedrock_regions"] = default_region_sets.get(
+                    selected_profile, default_region_sets["us"]
+                )
+            else:
+                config["aws"]["allowed_bedrock_regions"] = destination_regions
+
+            # Step 3: Select source region for the selected model/profile combination
+            profile_name = selected_profile.upper() if selected_profile != "us" else "US"
+            console.print(f"\n[green]Selected:[/green] {profile_name} Cross-Region")
+
+            # Get available source regions for this model/profile combination
+            available_source_regions = get_source_regions_for_model_profile(selected_model_key, selected_profile)
+
+            # Check for saved source region
+            saved_source_region = config.get("aws", {}).get("selected_source_region")
+            if saved_source_region not in available_source_regions:
+                saved_source_region = available_source_regions[0] if available_source_regions else None
+
+            if available_source_regions:
+                # Present source region selection
+                source_region_choices = []
+                for region in available_source_regions:
+                    choice_text = f"{region}"
+                    source_region_choices.append(
+                        questionary.Choice(title=choice_text, value=region, checked=(region == saved_source_region))
+                    )
+
+                # Adjust prompt based on number of options
+                if len(available_source_regions) == 1:
+                    prompt_text = "Source region for this model:"
+                    instruction_text = "(Press Enter to continue)"
+                else:
+                    prompt_text = "Select source region for AWS configuration:"
+                    instruction_text = "(Use arrow keys to select, Enter to confirm)"
+
+                selected_source_region = questionary.select(
+                    prompt_text, choices=source_region_choices, instruction=instruction_text
+                ).ask()
+
+                if selected_source_region is None:  # User cancelled
+                    return None
+
+                config["aws"]["selected_source_region"] = selected_source_region
+                console.print(f"[green]✓[/green] Source region: {selected_source_region}")
+            else:
+                # No source regions available - use default fallback
+                console.print(
+                    "[yellow]No source regions configured for this model. Using default region logic.[/yellow]"
+                )
+                config["aws"]["selected_source_region"] = None
+
+            # Get model-specific description for confirmation
+            profile_description = get_profile_description(selected_model_key, selected_profile)
+
+            console.print(
+                f"\n[green]✓[/green] Configured {selected_model['name']} with {profile_name} Cross-Region ({profile_description})"
+            )
 
             # Save progress
             progress.save_step("bedrock_complete", config)
@@ -559,7 +685,25 @@ class InitCommand(Command):
                     vpc_info += f"\n{len(vpc_config['subnet_ids'])} subnets selected"
                 table.add_row("Monitoring VPC", vpc_info)
 
-        table.add_row("Bedrock Access Regions", "\n".join(config["aws"]["allowed_bedrock_regions"]))
+        # Show selected model
+        selected_model = config["aws"].get("selected_model", "")
+        model_display = {
+            "us.anthropic.claude-opus-4-1-20250805-v1:0": "Claude Opus 4.1",
+            "us.anthropic.claude-opus-4-20250514-v1:0": "Claude Opus 4",
+            "us.anthropic.claude-3-7-sonnet-20250219-v1:0": "Claude 3.7 Sonnet",
+            "us.anthropic.claude-sonnet-4-20250514-v1:0": "Claude Sonnet 4",
+        }
+        if selected_model:
+            table.add_row("Claude Model", model_display.get(selected_model, selected_model))
+
+        # Show cross-region profile
+        cross_region_profile = config["aws"].get("cross_region_profile", "us")
+        profile_display = {
+            "us": "US Cross-Region (us-east-1, us-east-2, us-west-2)",
+            "europe": "Europe Cross-Region (eu-west-1, eu-west-3, eu-central-1, eu-north-1)",
+            "apac": "APAC Cross-Region (ap-northeast-1, ap-southeast-1/2, ap-south-1)",
+        }
+        table.add_row("Bedrock Regions", profile_display.get(cross_region_profile, cross_region_profile))
 
         console.print(table)
 
@@ -691,6 +835,9 @@ class InitCommand(Command):
                 else False
             ),
             allowed_bedrock_regions=config_data["aws"]["allowed_bedrock_regions"],
+            cross_region_profile=config_data["aws"].get("cross_region_profile", "us"),
+            selected_model=config_data["aws"].get("selected_model"),
+            selected_source_region=config_data["aws"].get("selected_source_region"),
             provider_type=config_data.get("provider_type"),
             cognito_user_pool_id=config_data.get("cognito_user_pool_id"),
         )
@@ -924,6 +1071,18 @@ class InitCommand(Command):
                 "monitoring": {"enabled": profile.monitoring_enabled},
             }
 
+            # Add Cognito User Pool ID if present
+            if hasattr(profile, "cognito_user_pool_id") and profile.cognito_user_pool_id:
+                existing_config["cognito_user_pool_id"] = profile.cognito_user_pool_id
+
+            # Add selected model if present
+            if hasattr(profile, "selected_model") and profile.selected_model:
+                existing_config["aws"]["selected_model"] = profile.selected_model
+
+            # Add cross-region profile if present
+            if hasattr(profile, "cross_region_profile") and profile.cross_region_profile:
+                existing_config["aws"]["cross_region_profile"] = profile.cross_region_profile
+
             return existing_config
 
         except Exception:
@@ -934,12 +1093,40 @@ class InitCommand(Command):
         console = Console()
 
         console.print(f"• OIDC Provider: [cyan]{config['okta']['domain']}[/cyan]")
+
+        # Show Cognito-specific fields if using Cognito User Pool
+        if "cognito_user_pool_id" in config:
+            console.print(f"• Cognito User Pool ID: [cyan]{config['cognito_user_pool_id']}[/cyan]")
+        if "okta" in config and "client_id" in config["okta"]:
+            console.print(f"• Client ID: [cyan]{config['okta']['client_id']}[/cyan]")
+
         console.print(
             f"• Credential Storage: [cyan]{'Keyring' if config.get('credential_storage') == 'keyring' else 'Session Files'}[/cyan]"
         )
         console.print(f"• AWS Region: [cyan]{config['aws']['region']}[/cyan]")
         console.print(f"• Identity Pool: [cyan]{config['aws']['identity_pool_name']}[/cyan]")
-        console.print(f"• Bedrock Regions: [cyan]{', '.join(config['aws']['allowed_bedrock_regions'])}[/cyan]")
+
+        # Show selected model if present
+        selected_model = config["aws"].get("selected_model")
+        if selected_model:
+            model_names = {
+                "us.anthropic.claude-opus-4-1-20250805-v1:0": "Claude Opus 4.1",
+                "us.anthropic.claude-opus-4-20250514-v1:0": "Claude Opus 4",
+                "us.anthropic.claude-3-7-sonnet-20250219-v1:0": "Claude 3.7 Sonnet",
+                "us.anthropic.claude-sonnet-4-20250514-v1:0": "Claude Sonnet 4",
+            }
+            console.print(f"• Claude Model: [cyan]{model_names.get(selected_model, selected_model)}[/cyan]")
+
+        # Show cross-region profile
+        cross_region_profile = config["aws"].get("cross_region_profile", "us")
+        profile_names = {
+            "us": "US Cross-Region (us-east-1, us-east-2, us-west-2)",
+            "europe": "Europe Cross-Region",
+            "apac": "APAC Cross-Region",
+        }
+        console.print(
+            f"• Bedrock Regions: [cyan]{profile_names.get(cross_region_profile, cross_region_profile)}[/cyan]"
+        )
         console.print(f"• Monitoring: [cyan]{'Enabled' if config['monitoring']['enabled'] else 'Disabled'}[/cyan]")
 
     def _stack_exists(self, stack_name: str, region: str) -> bool:
