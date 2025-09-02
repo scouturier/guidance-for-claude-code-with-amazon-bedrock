@@ -12,6 +12,7 @@ This guidance enables organizations to provide secure, centralized access to Cla
 - **Comprehensive Audit Trail**: Full CloudTrail logging of all Bedrock access
 - **Usage Monitoring**: Optional CloudWatch dashboards for tracking usage and costs
 - **Multi-Region Support**: Configure which AWS regions users can access Bedrock in
+- **Multi-Platform Support**: Windows, macOS (ARM & Intel), and Linux distributions
 
 ### For End Users
 
@@ -20,6 +21,7 @@ This guidance enables organizations to provide secure, centralized access to Cla
 - **AWS CLI/SDK Integration**: Works with any AWS tool or SDK
 - **Secure Credential Storage**: Choice of OS keyring or session-based storage
 - **Multi-Profile Support**: Manage multiple authentication profiles
+- **Cross-Platform**: Works on Windows, macOS, and Linux
 
 ## Table of Contents
 
@@ -58,18 +60,31 @@ poetry run ccwb init
 # Deploy infrastructure
 poetry run ccwb deploy
 
-# Create distribution package for users
-poetry run ccwb package
+# Create distribution package for users (all platforms)
+poetry run ccwb package --target-platform=all
+
+# Create and distribute package via secure URL (Optional)
+poetry run ccwb distribute
 ```
 
 2. Test package locally to verify end-user installation and access to Amazon Bedrock.
 
-```
+```bash
 # Test package locally
 poetry run ccwb test
 ```
 
-3. [Distribute](#end-user-experience) package to end-users.
+3. Distribute package to end-users (optional).
+
+```bash
+# Generate secure distribution URL (expires in 48 hours)
+poetry run ccwb distribute
+
+# Or specify custom expiration
+poetry run ccwb distribute --expires-hours=72
+```
+
+4. Share the generated URL with developers - no AWS credentials required for download.
 
 ### Cleanup
 
@@ -117,7 +132,7 @@ _You are responsible for the cost of the AWS services used while running this gu
 
 ### Sample Cost Table
 
-The following table provides a sample cost breakdown for deploying this guidance with 5,000 monthly active users in the US East (N. Virginia) Region for one month (monitoring is separate).
+The following table provides a sample cost breakdown for deploying this guidance with 5,000 monthly active users in the US East (N. Virginia) Region for one month (monitoring, analytics, and Windows builds would be separate).
 
 | AWS service            | Dimensions                 | Cost [USD] |
 | ---------------------- | -------------------------- | ---------- |
@@ -142,7 +157,9 @@ Based on AWS Pricing Calculator: [View Detailed Estimate](https://calculator.aws
   - CloudFormation stacks
   - Cognito Identity Pools
   - IAM roles and policies
-  - (Optional) ECS tasks and CloudWatch dashboards
+  - (Optional) Amazon Elastic Container Service (Amazon ECS) tasks and Amazon CloudWatch dashboards
+  - (Optional) Amazon Athena, AWS Glue, AWS Lambda, and Amazon Data Firehose resources
+  - (Optional) AWS CodeBuild
 - Amazon Bedrock activated in target regions
 
 **OIDC Provider Requirements:**
@@ -167,7 +184,9 @@ The guidance can be deployed in any AWS region that supports:
 
 - Amazon Cognito Identity Pools
 - Amazon Bedrock
-- (Optional) Amazon ECS Fargate for monitoring
+- (Optional) Amazon Elastic Container Service (Amazon ECS) tasks and Amazon CloudWatch dashboards
+- (Optional) Amazon Athena, AWS Glue, AWS Lambda, and Amazon Data Firehose resources
+- (Optional) AWS CodeBuild
 
 ### Cross-Region Inference
 
@@ -178,6 +197,35 @@ Claude Code uses Amazon Bedrock's cross-region inference for optimal performance
 - Select a specific source region within your profile for model inference
 
 This automatically routes requests across multiple AWS regions to ensure the best response times and highest availability. Modern Claude models (3.7+) require cross-region inference for access.
+
+### Platform Support
+
+The authentication tools support all major platforms:
+
+| Platform | Architecture          | Build Method                | Installation |
+| -------- | --------------------- | --------------------------- | ------------ |
+| Windows  | x64                   | AWS CodeBuild (Nuitka)      | install.bat  |
+| macOS    | ARM64 (Apple Silicon) | Native (PyInstaller)        | install.sh   |
+| macOS    | Intel (x86_64)        | Cross-compile (PyInstaller) | install.sh   |
+| macOS    | Universal (both)      | Universal2 (PyInstaller)    | install.sh   |
+| Linux    | x86_64                | Docker (PyInstaller)        | install.sh   |
+| Linux    | ARM64                 | Docker (PyInstaller)        | install.sh   |
+
+**Build Requirements:**
+
+- **Windows**: AWS CodeBuild with Nuitka (automated)
+- **macOS**: PyInstaller with architecture-specific builds
+  - ARM64: Native build on Apple Silicon Macs
+  - Intel: Optional - requires x86_64 Python environment on ARM Macs
+  - Universal: Requires both architectures' Python libraries
+- **Linux**: Docker with PyInstaller (for building on non-Linux hosts)
+
+### Optional: Intel Mac Builds
+
+Intel Mac builds require an x86_64 Python environment on Apple Silicon Macs.
+See [CLI Reference](assets/docs/CLI_REFERENCE.md#intel-mac-build-setup-optional) for setup instructions.
+
+If not configured, the package command will skip Intel builds and continue with other platforms.
 
 ## Implementation
 
@@ -233,19 +281,37 @@ This creates the following AWS resources:
 Build the package for end users:
 
 ```bash
-poetry run ccwb package
+# Build all platforms (starts Windows build in background)
+poetry run ccwb package --target-platform all
+
+# Check Windows build status (optional)
+poetry run ccwb builds
+
+# When ready, create distribution URL (optional)
+poetry run ccwb distribute
 ```
 
-This creates a `dist/` folder containing:
+**Package Workflow:**
 
-- `credential-process-macos` - Authentication executable for macOS
-- `credential-process-linux` - Authentication executable for Linux
+1. **Local builds**: macOS/Linux executables are built locally using PyInstaller
+2. **Windows builds**: Trigger AWS CodeBuild for Windows executables (20+ minutes) - requires enabling CodeBuild during `init`
+3. **Check status**: Monitor build progress with `poetry run ccwb builds`
+4. **Create distribution**: Use `distribute` to upload and generate presigned URLs
+
+> **Note**: Windows builds are optional and require CodeBuild to be enabled during the `init` process. If not enabled, the package command will skip Windows builds and continue with other platforms.
+
+The `dist/` folder will contain:
+
+- `credential-process-macos-arm64` - Authentication executable for macOS ARM64
+- `credential-process-macos-intel` - Authentication executable for macOS Intel (if built)
+- `credential-process-windows.exe` - Authentication executable for Windows
+- `credential-process-linux` - Authentication executable for Linux (if built on Linux)
 - `config.json` - Embedded configuration
-- `install.sh` - Installation script (auto-detects platform)
+- `install.sh` - Installation script for Unix systems
+- `install.bat` - Installation script for Windows
 - `README.md` - User instructions
 - `.claude/settings.json` - Claude Code telemetry settings (if monitoring enabled)
-- `otel-helper-macos` - OTEL helper executable for macOS (if monitoring enabled)
-- `otel-helper-linux` - OTEL helper executable for Linux (if monitoring enabled)
+- `otel-helper-*` - OTEL helper executables for each platform (if monitoring enabled)
 
 The package builder:
 

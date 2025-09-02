@@ -50,15 +50,79 @@ This single command orchestrates the creation of multiple AWS resources. A Cogni
 
 With infrastructure deployed, you're ready to create the package that end users will install.
 
-Run the package command:
+### Multi-Platform Build Support
+
+Claude Code supports building for all major platforms:
 
 ```bash
-poetry run ccwb package
+# Build for all platforms (recommended)
+poetry run ccwb package --target-platform=all
+
+# Build for specific platforms
+poetry run ccwb package --target-platform=windows    # Windows via CodeBuild
+poetry run ccwb package --target-platform=macos      # Current macOS architecture
+poetry run ccwb package --target-platform=linux      # Linux via Docker
 ```
 
-This command performs several operations. First, it retrieves the Cognito Identity Pool ID from your deployed CloudFormation stack. Then it uses PyInstaller to compile the Python authentication code into standalone executables for both macOS and Linux. Your organization's configuration - provider domain, client ID, and infrastructure details - gets written to a config.json file that the executables read at runtime.
+**Platform Build Methods (Hybrid System):**
 
-The resulting `dist/` folder contains everything users need. Platform-specific executables handle the OAuth2 authentication flow. The configuration file includes all necessary settings. An intelligent installer script detects the user's operating system and sets up their AWS profile automatically. If you enabled monitoring, it also includes Claude Code telemetry settings that point to your OpenTelemetry collector.
+- **Windows**: Uses Nuitka via AWS CodeBuild
+  - Optimized for performance and minimal antivirus false positives
+- **macOS**: Uses PyInstaller with architecture-specific builds
+  - ARM64: Native build on Apple Silicon Macs (works on all Macs via Rosetta)
+  - Intel: **Optional** - requires x86_64 Python environment on ARM Macs
+  - Universal: Requires both architectures' Python libraries
+- **Linux x64/ARM64**: Uses PyInstaller in Docker containers
+  - Automatically builds both architectures when Docker is available
+  - Docker Desktop handles architecture emulation via Rosetta
+
+**Optional: Intel Mac Setup**
+
+To build Intel binaries on Apple Silicon Macs, you'll need an x86_64 Python environment.
+See [CLI Reference](CLI_REFERENCE.md#intel-mac-build-setup-optional) for setup instructions.
+
+The package command will continue successfully even without this setup.
+
+This command performs several operations. First, it retrieves the Cognito Identity Pool ID from your deployed CloudFormation stack. Then it compiles the Python authentication code into standalone executables using PyInstaller for macOS/Linux and Nuitka for Windows. Your organization's configuration - provider domain, client ID, and infrastructure details - gets written to a config.json file that the executables read at runtime.
+
+The resulting `dist/` folder contains everything users need:
+
+- Platform-specific executables (`credential-process-<platform>`) handle the OAuth2 authentication flow
+- The configuration file includes all necessary settings
+- Intelligent installer scripts (`install.sh` for Unix, `install.bat` for Windows) detect the user's architecture and set up their AWS profile automatically
+- If you enabled monitoring, OTEL helper executables and Claude Code telemetry settings that point to your OpenTelemetry collector
+
+### Windows Build System (Optional)
+
+Windows binary builds use AWS CodeBuild with Nuitka for optimal performance. Windows support is optional and configured during the `init` process:
+
+1. **Enable during init**: When running `poetry run ccwb init`, you'll be prompted:
+
+   ```
+   Enable Windows build support via AWS CodeBuild? (y/N)
+   ```
+
+   If you answer "yes", the CodeBuild stack will be deployed automatically when you run `deploy`.
+
+2. **If enabled**, Windows builds will automatically trigger when you run:
+
+   ```bash
+   poetry run ccwb package --target-platform=all
+   # or specifically for Windows:
+   poetry run ccwb package --target-platform=windows
+   ```
+
+3. **Monitor build progress**:
+   ```bash
+   poetry run ccwb builds
+   ```
+
+**Important Notes:**
+
+- Windows builds are completely optional - the package will work without them
+- If CodeBuild is not enabled, Windows builds will be silently skipped
+- Windows builds take 20+ minutes
+- To enable Windows builds after initial setup, re-run `poetry run ccwb init`
 
 ## Phase 4: Testing Your Deployment
 
@@ -78,8 +142,37 @@ poetry run ccwb test --api
 
 ## Phase 5: Distributing to Your Users
 
-With a tested package in hand, you're ready for the final phase: getting the authentication system to your users. The distribution method you choose depends on your organization's size, technical sophistication, and existing IT processes.
+With a tested package in hand, you're ready for the final phase: getting the authentication system to your users. Claude Code offers two distribution methods:
 
-Share the `dist/` folder through your normal software distribution channels - perhaps a shared drive, internal website, or artifact repository. Users simply run the installer script, and within seconds they're authenticated and ready to use Claude Code.
+### Option 1: Secure URL Distribution
 
-Regardless of distribution method, the user experience remains simple. They receive the package, run `./install.sh`, and they're done. The installer configures their AWS profile, sets up the credential process, and handles all the complex authentication machinery invisibly. When they run Claude Code with `AWS_PROFILE=ClaudeCode`, authentication happens automatically in the background.
+Generate a presigned URL for easy, secure distribution without requiring AWS credentials:
+
+```bash
+# Create distribution with 48-hour expiration
+poetry run ccwb distribute
+
+# Or specify custom expiration (up to 7 days)
+poetry run ccwb distribute --expires-hours=72
+```
+
+The command uploads your package to S3 and generates a secure, time-limited URL. Share this URL with developers via email, Slack, or your internal wiki. Users download and run the installer - no AWS credentials required.
+
+### Option 2: Manual Distribution
+
+Share the `dist/` folder through your normal software distribution channels - perhaps a shared drive, internal website, or artifact repository.
+
+**Installation by Platform:**
+
+- **Windows**: Users run `install.bat`
+- **macOS/Linux**: Users run `./install.sh`
+
+Regardless of distribution method, the user experience remains simple. They receive the package, run the installer for their platform, and they're done. The installer:
+
+- Detects their operating system and architecture
+- Installs the appropriate binary
+- Configures their AWS profile
+- Sets up the credential process
+- Handles all the complex authentication machinery invisibly
+
+When they run Claude Code with `AWS_PROFILE=ClaudeCode`, authentication happens automatically in the background. On first use, users will see a browser window open for authentication with your organization's identity provider.
