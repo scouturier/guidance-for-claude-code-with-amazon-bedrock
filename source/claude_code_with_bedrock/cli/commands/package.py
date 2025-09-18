@@ -308,7 +308,15 @@ class PackageCommand(Command):
                     console.print(f"[dim]Checking latest build: {build_id}[/dim]")
 
             # Get build status from CodeBuild
-            codebuild = boto3.client("codebuild", region_name="us-east-1")  # Windows builds are in us-east-1
+            # Load profile to get the correct region
+            config = Config.load()
+            profile_name = self.option("profile")
+            profile = config.get_profile(profile_name)
+            if not profile:
+                console.print("[red]No configuration found. Run 'poetry run ccwb init' first.[/red]")
+                return 1
+            
+            codebuild = boto3.client("codebuild", region_name=profile.aws_region)
             response = codebuild.batch_get_builds(ids=[build_id])
 
             if not response.get("builds"):
@@ -667,7 +675,14 @@ class PackageCommand(Command):
     def _build_linux_pyinstaller(self, output_dir: Path) -> Path:
         """Build Linux executable using PyInstaller."""
         console = Console()
-        binary_name = "credential-process-linux"
+        
+        # Detect architecture and set appropriate binary name
+        import platform
+        machine = platform.machine().lower()
+        if machine in ['aarch64', 'arm64']:
+            binary_name = "credential-process-linux-arm64"
+        else:
+            binary_name = "credential-process-linux-x64"
 
         # Find the source file
         src_file = Path(__file__).parent.parent.parent.parent.parent / "source" / "cognito_auth" / "__main__.py"
@@ -1016,7 +1031,7 @@ RUN pyinstaller \
 
             if profile:
                 project_name = f"{profile.identity_pool_name}-windows-build"
-                codebuild = boto3.client("codebuild", region_name="us-east-1")
+                codebuild = boto3.client("codebuild", region_name=profile.aws_region)
 
                 # List recent builds
                 response = codebuild.list_builds_for_project(projectName=project_name, sortOrder="DESCENDING")
@@ -1212,7 +1227,13 @@ RUN pyinstaller \
             else:
                 binary_name = "otel-helper-macos"
         elif platform_name == "linux":
-            binary_name = "otel-helper-linux"
+            # Detect architecture and set appropriate binary name
+            import platform
+            machine = platform.machine().lower()
+            if machine in ['aarch64', 'arm64']:
+                binary_name = "otel-helper-linux-arm64"
+            else:
+                binary_name = "otel-helper-linux-x64"
         else:
             raise ValueError(f"Unsupported platform for OTEL helper: {platform_name}")
 
