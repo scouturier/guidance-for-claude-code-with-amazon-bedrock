@@ -113,9 +113,9 @@ Step-by-step flow for end-users:
 
 ## Architecture Overview
 
-![Architecture Diagram](assets/images/credential-flow-diagram.png)
+### Authentication Flow (with Cognito Identity Pool)
 
-### Authentication Flow
+![Architecture Diagram](assets/images/credential-flow-diagram.png)
 
 1. **User initiates authentication**: User requests access to Amazon Bedrock through Claude Code
 2. **OIDC authentication**: User authenticates with their OIDC provider and receives an ID token
@@ -125,6 +125,17 @@ Step-by-step flow for end-users:
 6. **Cognito returns credentials**: Cognito passes the temporary credentials back to the application
 7. **Access Amazon Bedrock**: Application uses the temporary credentials to call Amazon Bedrock
 8. **Bedrock response**: Amazon Bedrock processes the request and returns the response
+
+### Authentication Flow (direct to IAM)
+
+![Architecture Diagram](assets/images/credential-flow-direct-diagram.png)
+
+1. **User initiates authentication**: User requests access to Amazon Bedrock through Claude Code
+2. **OIDC authentication**: User authenticates with their OIDC provider and receives an ID token
+3. **Token submission to IAM**: Application sends the OIDC ID token to Amazon Cognito
+4. **IAM returns credentials**: AWS IAM validates and returns temporary AWS credentials
+5. **Access Amazon Bedrock**: Application uses the temporary credentials to call Amazon Bedrock
+6. **Bedrock response**: Amazon Bedrock processes the request and returns the response
 
 ### Cost
 
@@ -155,7 +166,7 @@ Based on AWS Pricing Calculator: [View Detailed Estimate](https://calculator.aws
 
 - AWS account with appropriate IAM permissions to create:
   - CloudFormation stacks
-  - Cognito Identity Pools
+  - IAM OIDC Providers or Cognito Identity Pools
   - IAM roles and policies
   - (Optional) Amazon Elastic Container Service (Amazon ECS) tasks and Amazon CloudWatch dashboards
   - (Optional) Amazon Athena, AWS Glue, AWS Lambda, and Amazon Data Firehose resources
@@ -182,7 +193,7 @@ Based on AWS Pricing Calculator: [View Detailed Estimate](https://calculator.aws
 
 The guidance can be deployed in any AWS region that supports:
 
-- Amazon Cognito Identity Pools
+- IAM OIDC Providers or Amazon Cognito Identity Pools
 - Amazon Bedrock
 - (Optional) Amazon Elastic Container Service (Amazon ECS) tasks and Amazon CloudWatch dashboards
 - (Optional) Amazon Athena, AWS Glue, AWS Lambda, and Amazon Data Firehose resources
@@ -257,8 +268,8 @@ This creates the following AWS resources:
 
 **Authentication Infrastructure:**
 
-- Amazon Cognito Identity Pool for OIDC federation
-- IAM OIDC Provider trust relationship
+- IAM OIDC Provider or Amazon Cognito Identity Pool for OIDC federation
+- IAM trust relationship for federated access
 - IAM role with policies for:
   - Bedrock model invocation in specified regions
   - CloudWatch metrics (if monitoring enabled)

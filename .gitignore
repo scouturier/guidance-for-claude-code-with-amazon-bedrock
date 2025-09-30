@@ -54,3 +54,8 @@ assets/docs/planning
 
 .pytest_cache/
 .ruff_cache/
+.coverage
+.epcc
+
+EPCC_*
+PRs/

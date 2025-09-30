@@ -347,6 +347,26 @@ class InitCommand(Command):
             if cognito_user_pool_id:
                 config["cognito_user_pool_id"] = cognito_user_pool_id
 
+            # Ask about federation type
+            console.print("\n[cyan]Federation Type Selection[/cyan]")
+            console.print("Direct STS.")
+            console.print("Cognito Identity Pool.\n")
+
+            federation_type = questionary.select(
+                "Choose federation type:",
+                choices=[
+                    questionary.Choice("Direct STS", value="direct"),
+                    questionary.Choice("Cognito Identity Pool", value="cognito"),
+                ],
+                default="direct",
+            ).ask()
+
+            if not federation_type:
+                return None
+
+            config["federation_type"] = federation_type
+            config["max_session_duration"] = 43200 if federation_type == "direct" else 28800
+
             # Save progress
             progress.save_step("oidc_complete", config)
 
@@ -389,23 +409,33 @@ class InitCommand(Command):
             if not region:
                 return None
 
-            pool_name = questionary.text(
-                "Identity Pool Name:",
-                default=config.get("aws", {}).get("identity_pool_name", "claude-code-auth"),
-                validate=validate_identity_pool_name,
-            ).ask()
+            # For Direct STS, we use a stack name instead of Identity Pool Name
+            # But we keep the same field for backward compatibility
+            federation_type = config.get("federation_type", "cognito")
+            if federation_type == "direct":
+                stack_base_name = questionary.text(
+                    "Stack base name (for CloudFormation):",
+                    default=config.get("aws", {}).get("identity_pool_name", "claude-code-auth"),
+                    validate=validate_identity_pool_name,
+                ).ask()
+            else:
+                stack_base_name = questionary.text(
+                    "Identity Pool Name:",
+                    default=config.get("aws", {}).get("identity_pool_name", "claude-code-auth"),
+                    validate=validate_identity_pool_name,
+                ).ask()
 
-            if not pool_name:
+            if not stack_base_name:
                 return None
 
             config["aws"] = {
                 "region": region,
-                "identity_pool_name": pool_name,
+                "identity_pool_name": stack_base_name,  # Keep same field name for compatibility
                 "stacks": {
-                    "auth": f"{pool_name}-stack",
-                    "monitoring": f"{pool_name}-monitoring",
-                    "dashboard": f"{pool_name}-dashboard",
-                    "analytics": f"{pool_name}-analytics",
+                    "auth": f"{stack_base_name}-stack",
+                    "monitoring": f"{stack_base_name}-monitoring",
+                    "dashboard": f"{stack_base_name}-dashboard",
+                    "analytics": f"{stack_base_name}-analytics",
                 },
             }
 
@@ -493,7 +523,7 @@ class InitCommand(Command):
                     monthly_limit_millions = questionary.text(
                         "Monthly token limit per user (in millions):",
                         default=str(config.get("quota", {}).get("monthly_limit_millions", 300)),
-                        validate=lambda x: x.isdigit() and int(x) > 0
+                        validate=lambda x: x.isdigit() and int(x) > 0,
                     ).ask()
 
                     monthly_limit = int(monthly_limit_millions) * 1000000
@@ -646,19 +676,12 @@ class InitCommand(Command):
             # Get destination regions for the model/profile combination
             destination_regions = get_destination_regions_for_model_profile(selected_model_key, selected_profile)
 
-            # For now, use a default set of regions until the TODO regions are filled in
-            # This ensures the system still works during the transition
-            if not destination_regions:  # Empty list means TODO regions not filled yet
-                default_region_sets = {
-                    "us": ["us-east-1", "us-east-2", "us-west-2"],
-                    "europe": ["eu-west-1", "eu-west-3", "eu-central-1", "eu-north-1"],
-                    "apac": ["ap-northeast-1", "ap-southeast-1", "ap-southeast-2", "ap-south-1"],
-                }
-                config["aws"]["allowed_bedrock_regions"] = default_region_sets.get(
-                    selected_profile, default_region_sets["us"]
-                )
-            else:
-                config["aws"]["allowed_bedrock_regions"] = destination_regions
+            # Use the destination regions from the model profile
+            if not destination_regions:
+                console.print(f"[red]Error:[/red] No destination regions configured for {selected_model_key} with {selected_profile} profile")
+                raise ValueError(f"No destination regions configured for model/profile combination")
+
+            config["aws"]["allowed_bedrock_regions"] = destination_regions
 
             # Step 3: Select source region for the selected model/profile combination
             profile_name = selected_profile.upper() if selected_profile != "us" else "US"
@@ -790,7 +813,10 @@ class InitCommand(Command):
 
         # Show what will be created
         console.print("\n[bold yellow]Resources to be created:[/bold yellow]")
-        console.print("• Cognito Identity Pool for authentication")
+        if config.get("federation_type") == "direct":
+            console.print("• IAM OIDC Provider for authentication")
+        else:
+            console.print("• Cognito Identity Pool for authentication")
         console.print("• IAM roles and policies for Bedrock access")
         if config.get("monitoring", {}).get("enabled"):
             console.print("• CloudWatch dashboards for usage monitoring")
@@ -933,6 +959,8 @@ class InitCommand(Command):
             selected_source_region=config_data["aws"].get("selected_source_region"),
             provider_type=config_data.get("provider_type"),
             cognito_user_pool_id=config_data.get("cognito_user_pool_id"),
+            federation_type=config_data.get("federation_type", "cognito"),
+            max_session_duration=config_data.get("max_session_duration", 28800),
             enable_codebuild=config_data.get("codebuild", {}).get("enabled", False),
             enable_distribution=config_data.get("distribution", {}).get("enabled", False),
             quota_monitoring_enabled=(
