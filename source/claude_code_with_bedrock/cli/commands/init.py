@@ -534,7 +534,7 @@ class InitCommand(Command):
                     config["quota"]["warning_threshold_80"] = warning_80
                     config["quota"]["warning_threshold_90"] = warning_90
 
-                    console.print(f"[green]✓[/green] Quota monitoring configured:")
+                    console.print("[green]✓[/green] Quota monitoring configured:")
                     console.print(f"  • Monthly limit: {monthly_limit:,} tokens per user")
                     console.print(f"  • Warning at: {warning_80:,} tokens (80%)")
                     console.print(f"  • Critical at: {warning_90:,} tokens (90%)")
@@ -678,8 +678,10 @@ class InitCommand(Command):
 
             # Use the destination regions from the model profile
             if not destination_regions:
-                console.print(f"[red]Error:[/red] No destination regions configured for {selected_model_key} with {selected_profile} profile")
-                raise ValueError(f"No destination regions configured for model/profile combination")
+                console.print(
+                    f"[red]Error:[/red] No destination regions configured for {selected_model_key} with {selected_profile} profile"
+                )
+                raise ValueError("No destination regions configured for model/profile combination")
 
             config["aws"]["allowed_bedrock_regions"] = destination_regions
 
@@ -847,8 +849,7 @@ class InitCommand(Command):
         console.print("\n[bold]Deploying infrastructure...[/bold]")
 
         # Deploy authentication stack
-        auth_success = False
-        with console.status("[yellow]Deploying authentication stack...[/yellow]") as status:
+        with console.status("[yellow]Deploying authentication stack...[/yellow]"):
             try:
                 # Get the parameters file path
                 params_file = (
@@ -872,7 +873,6 @@ class InitCommand(Command):
 
                 if self._deploy_stack(stack_name, template_file, params_file, config["aws"]["region"]):
                     console.print("  [green]✓[/green] Authentication stack deployed")
-                    auth_success = True
                 else:
                     console.print("  [red]✗[/red] Authentication stack deployment failed")
                     return 1
@@ -882,7 +882,7 @@ class InitCommand(Command):
 
         # Deploy monitoring stack if enabled
         if config["monitoring"]["enabled"]:
-            with console.status("[yellow]Deploying monitoring stack...[/yellow]") as status:
+            with console.status("[yellow]Deploying monitoring stack...[/yellow]"):
                 try:
                     # Deploy OTel collector
                     collector_stack = config["aws"]["stacks"]["monitoring"]
@@ -1176,7 +1176,7 @@ class InitCommand(Command):
                 console.print("\n[dim]Checking deployment status in current AWS account...[/dim]")
                 if self._stack_exists(auth_stack, region):
                     # Get stack outputs to verify it's our stack
-                    outputs = self._get_stack_outputs(auth_stack, region)
+                    self._get_stack_outputs(auth_stack, region)
                     console.print(f"[dim]  ✓ Found auth stack: {auth_stack}[/dim]")
                     stacks_found = True
                 else:
@@ -1393,7 +1393,7 @@ class InitCommand(Command):
                 return {"create_vpc": True}
             else:
                 # User selected an existing VPC
-                selected_vpc = next(v for v in vpcs if v["id"] == vpc_choice)
+                next(v for v in vpcs if v["id"] == vpc_choice)
                 console.print(f"\n[green]Selected VPC: {vpc_choice}[/green]")
 
                 # Get subnets
@@ -1429,7 +1429,7 @@ class InitCommand(Command):
 
                 # Validate subnets are in different AZs
                 selected_subnet_details = [s for s in subnets if s["id"] in selected_subnets]
-                azs = set(s["availability_zone"] for s in selected_subnet_details)
+                azs = {s["availability_zone"] for s in selected_subnet_details}
 
                 if len(azs) < 2:
                     console.print("[red]Error: Selected subnets must be in different availability zones[/red]")

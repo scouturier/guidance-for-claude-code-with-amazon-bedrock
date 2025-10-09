@@ -179,12 +179,12 @@ CLAUDE_MODELS = {
                 "source_regions": [
                     "eu-central-1",  # Frankfurt
                     "eu-central-2",  # Zurich
-                    "eu-north-1",    # Stockholm
-                    "eu-west-1",     # Ireland
-                    "eu-west-2",     # London
-                    "eu-west-3",     # Paris
-                    "eu-south-2",    # Milan
-                    "eu-south-3",    # Spain
+                    "eu-north-1",  # Stockholm
+                    "eu-west-1",  # Ireland
+                    "eu-west-2",  # London
+                    "eu-west-3",  # Paris
+                    "eu-south-2",  # Milan
+                    "eu-south-3",  # Spain
                 ],
                 "destination_regions": [
                     "eu-central-1",
@@ -214,32 +214,32 @@ CLAUDE_MODELS = {
                 "description": "Global CRIS - All regions worldwide",
                 "source_regions": [
                     # North America
-                    "us-east-1",       # N. Virginia
-                    "us-east-2",       # Ohio
-                    "us-west-2",       # Oregon
-                    "us-west-1",       # N. California
-                    "ca-central-1",    # Canada Central
+                    "us-east-1",  # N. Virginia
+                    "us-east-2",  # Ohio
+                    "us-west-2",  # Oregon
+                    "us-west-1",  # N. California
+                    "ca-central-1",  # Canada Central
                     # Europe
-                    "eu-central-1",    # Frankfurt
-                    "eu-central-2",    # Zurich
-                    "eu-north-1",      # Stockholm
-                    "eu-west-1",       # Ireland
-                    "eu-west-2",       # London
-                    "eu-west-3",       # Paris
-                    "eu-south-2",      # Milan
-                    "eu-south-3",      # Spain
+                    "eu-central-1",  # Frankfurt
+                    "eu-central-2",  # Zurich
+                    "eu-north-1",  # Stockholm
+                    "eu-west-1",  # Ireland
+                    "eu-west-2",  # London
+                    "eu-west-3",  # Paris
+                    "eu-south-2",  # Milan
+                    "eu-south-3",  # Spain
                     # Asia Pacific
                     "ap-southeast-3",  # Jakarta
                     "ap-northeast-1",  # Tokyo
                     "ap-northeast-2",  # Seoul
                     "ap-northeast-3",  # Osaka
-                    "ap-south-1",      # Mumbai
-                    "ap-south-5",      # Hyderabad
+                    "ap-south-1",  # Mumbai
+                    "ap-south-5",  # Hyderabad
                     "ap-southeast-1",  # Singapore
                     "ap-southeast-4",  # Melbourne
                     "ap-southeast-2",  # Sydney
                     # South America
-                    "sa-east-1",       # São Paulo
+                    "sa-east-1",  # São Paulo
                 ],
                 "destination_regions": [
                     # North America
@@ -389,7 +389,7 @@ def get_all_model_display_names() -> dict[str, str]:
     """Get a mapping of all model IDs to their display names for UI purposes."""
     display_names = {}
 
-    for model_key, model_config in CLAUDE_MODELS.items():
+    for _model_key, model_config in CLAUDE_MODELS.items():
         for profile_key, profile_config in model_config["profiles"].items():
             model_id = profile_config["model_id"]
             base_name = model_config["name"]
