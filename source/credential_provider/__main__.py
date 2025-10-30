@@ -777,10 +777,16 @@ class MultiProviderAuth:
         # Build token endpoint URL
         token_url = f"{base_url}{self.provider_config['token_endpoint']}"
 
+        # Use Basic Auth if client_secret is provided
+        auth = None
+        if "client_secret" in self.config and self.config["client_secret"]:
+            auth = (self.config["client_id"], self.config["client_secret"])
+
         token_response = requests.post(
             token_url,
             data=token_data,
             headers={"Content-Type": "application/x-www-form-urlencoded"},
+            auth=auth,
             timeout=30,  # 30 second timeout for token exchange
         )
 
