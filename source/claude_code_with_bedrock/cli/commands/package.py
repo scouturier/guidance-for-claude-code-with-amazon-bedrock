@@ -344,6 +344,17 @@ class PackageCommand(Command):
         console.print("[cyan]Creating installer script...[/cyan]")
         self._create_installer(output_dir, profile, built_executables, built_otel_helpers)
 
+        # Copy shell wrapper for OTEL helper (Layer 2 caching - avoids PyInstaller startup)
+        if built_otel_helpers:
+            import shutil as _shutil
+
+            shell_wrapper_src = Path(__file__).parent.parent.parent.parent / "otel_helper" / "otel-helper.sh"
+            if shell_wrapper_src.exists():
+                shell_wrapper_dst = output_dir / "otel-helper.sh"
+                _shutil.copy2(shell_wrapper_src, shell_wrapper_dst)
+                shell_wrapper_dst.chmod(0o755)
+                console.print("[green]✓ OTEL helper shell wrapper included[/green]")
+
         # Create documentation
         console.print("[cyan]Creating documentation...[/cyan]")
         self._create_documentation(output_dir, profile, timestamp)
@@ -1869,12 +1880,22 @@ if [ -d "claude-settings" ]; then
     fi
 fi
 
-# Copy OTEL helper executable if present
+# Copy OTEL helper executable and shell wrapper if present
 if [ -f "$OTEL_BINARY" ]; then
     echo
     echo "Installing OTEL helper..."
-    cp "$OTEL_BINARY" ~/claude-code-with-bedrock/otel-helper
-    chmod +x ~/claude-code-with-bedrock/otel-helper
+    # Install PyInstaller binary as otel-helper-bin (fallback for cache miss)
+    cp "$OTEL_BINARY" ~/claude-code-with-bedrock/otel-helper-bin
+    chmod +x ~/claude-code-with-bedrock/otel-helper-bin
+    # Install shell wrapper as otel-helper (fast cache check, avoids PyInstaller startup)
+    if [ -f "otel-helper.sh" ]; then
+        cp "otel-helper.sh" ~/claude-code-with-bedrock/otel-helper
+        chmod +x ~/claude-code-with-bedrock/otel-helper
+    else
+        # Fallback: if shell wrapper not in package, point directly to binary
+        cp "$OTEL_BINARY" ~/claude-code-with-bedrock/otel-helper
+        chmod +x ~/claude-code-with-bedrock/otel-helper
+    fi
     echo "✓ OTEL helper installed"
 fi
 
@@ -1882,7 +1903,7 @@ fi
 if [ -f ~/claude-code-with-bedrock/otel-helper ]; then
     echo "The OTEL helper will extract user attributes from authentication tokens"
     echo "and include them in metrics. To test the helper, run:"
-    echo "  ~/claude-code-with-bedrock/otel-helper --test"
+    echo "  ~/claude-code-with-bedrock/otel-helper-bin --test"
 fi
 
 # Update AWS config
