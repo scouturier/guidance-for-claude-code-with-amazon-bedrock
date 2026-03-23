@@ -1759,6 +1759,29 @@ class MultiProviderAuth:
     # End Quota Check Methods
     # ===========================================
 
+    def _try_silent_refresh(self):
+        """Attempt to refresh AWS credentials using a cached, still-valid OIDC id_token.
+
+        Returns:
+            Formatted AWS credentials dict if successful, None if silent refresh not possible.
+        """
+        try:
+            id_token = self.get_monitoring_token()
+            if not id_token:
+                self._debug_print("No valid cached id_token for silent refresh")
+                return None
+
+            self._debug_print("Found valid cached id_token, attempting silent credential refresh...")
+            token_claims = jwt.decode(id_token, options={"verify_signature": False})
+
+            credentials = self.get_aws_credentials(id_token, token_claims)
+            self.save_credentials(credentials)
+            self._debug_print("Silent credential refresh succeeded")
+            return credentials
+        except Exception as e:
+            self._debug_print(f"Silent refresh failed, will require browser auth: {e}")
+            return None
+
     def run(self):
         """Main execution flow"""
         try:
@@ -1817,7 +1840,25 @@ class MultiProviderAuth:
                 print(json.dumps(cached))  # noqa: S105
                 return 0
 
-            # Authenticate with OIDC provider
+            # Try silent refresh using cached id_token before opening browser
+            silent_creds = self._try_silent_refresh()
+            if silent_creds:
+                # Check quota if configured
+                if self._should_check_quota():
+                    id_token = self.get_monitoring_token()
+                    token_claims = self._get_cached_token_claims()
+                    if id_token and token_claims:
+                        quota_result = self._check_quota(token_claims, id_token)
+                        self._save_quota_check_timestamp()
+                        if not quota_result.get("allowed", True):
+                            return self._handle_quota_blocked(quota_result)
+                        else:
+                            self._handle_quota_warning(quota_result)
+
+                print(json.dumps(silent_creds))
+                return 0
+
+            # Authenticate with OIDC provider (browser popup - only when id_token is also expired)
             self._debug_print(f"Authenticating with {self.provider_config['name']} for profile '{self.profile}'...")
             id_token, token_claims = self.authenticate_oidc()
 
