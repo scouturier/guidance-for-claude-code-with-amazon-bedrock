@@ -584,8 +584,8 @@ class MultiProviderAuth:
             exp_time = token_data.get("expires", 0)
             now = int(datetime.now(timezone.utc).timestamp())
 
-            # Return token if it expires in more than 10 minutes
-            if exp_time - now > 600:
+            # Return token if it expires in more than 60 seconds
+            if exp_time - now > 60:
                 token = token_data["token"]
                 # Set in environment for this session
                 os.environ["CLAUDE_CODE_MONITORING_TOKEN"] = token
