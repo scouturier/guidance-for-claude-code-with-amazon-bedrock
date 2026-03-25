@@ -207,8 +207,6 @@ def read_cached_headers():
     User attributes (email, team, etc.) don't change between sessions,
     so cached headers are served regardless of token expiry. Headers are
     refreshed opportunistically when a valid token is available.
-    When OTEL_JWT_AUTH is implemented with refresh tokens, this will
-    need to check token validity for the Bearer token.
     """
     try:
         cache_path = get_cache_path()
@@ -337,10 +335,6 @@ def main():
 
         # Generate headers dictionary
         headers_dict = format_as_headers_dict(user_info)
-        # Only include Bearer token when ALB JWT validation is enabled (set by installer)
-        if os.environ.get("OTEL_JWT_AUTH", "").lower() in ("true", "1", "yes"):
-            headers_dict["authorization"] = f"Bearer {token}"
-
         # In test mode, print detailed output
         if TEST_MODE:
             print("===== TEST MODE OUTPUT =====\n")
