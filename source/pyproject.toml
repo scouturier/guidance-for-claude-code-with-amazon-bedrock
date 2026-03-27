@@ -30,10 +30,10 @@ credential-provider = "credential_provider:main"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
-boto3 = "^1.42.77"
+boto3 = "^1.28.0"
 requests = "^2.33.0"
-PyJWT = "^2.12.1"
-keyring = "^25.7.0"
+PyJWT = "^2.8.0"
+keyring = "^24.0.0"
 cryptography = ">=44.0.1"
 cleo = "^2.0.0"
 rich = "^14.3.3"
