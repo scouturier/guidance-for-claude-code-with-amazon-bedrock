@@ -70,6 +70,15 @@ class Profile:
     federated_role_arn: str | None = None  # ARN for Direct STS federation
     max_session_duration: int = 28800  # 8 hours default, 43200 (12 hours) for Direct STS
 
+    # Confidential client authentication (Azure AD / Entra ID)
+    # If neither is set, public client flow is used (current default).
+    # If client_secret is set, confidential client with secret is used.
+    # If client_certificate_path + client_certificate_key_path are set,
+    # certificate-based confidential client (signed JWT assertion) is used.
+    client_secret: str | None = None  # OIDC client secret (confidential client)
+    client_certificate_path: str | None = None  # Path to PEM certificate file
+    client_certificate_key_path: str | None = None  # Path to PEM private key file
+
     # Claude Code settings configuration
     include_coauthored_by: bool = True  # Whether to include "co-authored-by Claude" in git commits
 

@@ -740,6 +740,56 @@ class MultiProviderAuth:
             self._debug_print(f"Error parsing expiration: {e}")
             return True  # Assume expired on parse error
 
+    def _build_client_assertion(self, token_url: str) -> str:
+        """Build a signed JWT client assertion for certificate-based confidential client auth.
+
+        Used by Azure AD / Entra ID when 'Allow public client flows' is disabled.
+        Follows the Microsoft identity platform certificate credentials specification:
+        https://learn.microsoft.com/en-us/entra/identity-platform/certificate-credentials
+
+        Args:
+            token_url: The token endpoint URL, used as the JWT audience.
+
+        Returns:
+            A signed JWT string to be sent as client_assertion.
+        """
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import padding
+
+        cert_path = Path(self.config["client_certificate_path"]).expanduser()
+        key_path = Path(self.config["client_certificate_key_path"]).expanduser()
+
+        cert_pem = cert_path.read_bytes()
+        key_pem = key_path.read_bytes()
+
+        cert = x509.load_pem_x509_certificate(cert_pem)
+        private_key = serialization.load_pem_private_key(key_pem, password=None)
+
+        # SHA-1 thumbprint of the DER-encoded certificate (x5t header)
+        thumbprint = cert.fingerprint(hashes.SHA1())  # noqa: S303 — required by OIDC spec
+        x5t = base64.urlsafe_b64encode(thumbprint).rstrip(b"=").decode()
+
+        now = int(time.time())
+        payload = {
+            "aud": token_url,
+            "iss": self.config["client_id"],
+            "sub": self.config["client_id"],
+            "jti": secrets.token_urlsafe(16),
+            "nbf": now,
+            "iat": now,
+            "exp": now + 300,  # 5-minute lifetime
+        }
+
+        # PyJWT encodes using the private key; headers must include x5t
+        token = jwt.encode(
+            payload,
+            private_key,
+            algorithm="RS256",
+            headers={"x5t": x5t},
+        )
+        return token
+
     def authenticate_oidc(self):
         """Perform OIDC authentication with PKCE"""
         state = secrets.token_urlsafe(16)
@@ -828,6 +878,13 @@ class MultiProviderAuth:
 
         # Build token endpoint URL
         token_url = f"{base_url}{self.provider_config['token_endpoint']}"
+
+        # Confidential client: inject client_secret or certificate assertion
+        if self.config.get("client_certificate_path") and self.config.get("client_certificate_key_path"):
+            token_data["client_assertion_type"] = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+            token_data["client_assertion"] = self._build_client_assertion(token_url)
+        elif self.config.get("client_secret"):
+            token_data["client_secret"] = self.config["client_secret"]
 
         token_response = requests.post(
             token_url,
