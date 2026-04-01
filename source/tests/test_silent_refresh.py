@@ -52,7 +52,7 @@ def _make_aws_credentials(exp_offset=900):
     exp = datetime.now(timezone.utc) + timedelta(seconds=exp_offset)
     return {
         "Version": 1,
-        "AccessKeyId": "AKIAIOSFODNN7EXAMPLE",
+        "AccessKeyId": "FAKE-ACCESS-KEY-ID-FOR-TESTING",  # pragma: allowlist secret
         "SecretAccessKey": "fake-secret-access-key-for-testing",  # pragma: allowlist secret
         "SessionToken": "FwoGZXIvYXdzEBYaDH...",
         "Expiration": exp.isoformat(),
