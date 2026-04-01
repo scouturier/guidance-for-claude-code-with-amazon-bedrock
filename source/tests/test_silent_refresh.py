@@ -27,7 +27,7 @@ def _make_id_token(exp_offset=3600, email="test@example.com"):
         "nonce": "test-nonce",
     }
     # Encode without signing (matches how the provider decodes with verify_signature=False)
-    return pyjwt.encode(claims, "secret", algorithm="HS256"), claims  # pragma: allowlist secret
+    return pyjwt.encode(claims, "fake-test-jwt-key", algorithm="HS256"), claims  # pragma: allowlist secret
 
 
 def _make_config():
@@ -53,7 +53,7 @@ def _make_aws_credentials(exp_offset=900):
     return {
         "Version": 1,
         "AccessKeyId": "AKIAIOSFODNN7EXAMPLE",
-        "SecretAccessKey": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",  # pragma: allowlist secret
+        "SecretAccessKey": "fake-secret-access-key-for-testing",  # pragma: allowlist secret
         "SessionToken": "FwoGZXIvYXdzEBYaDH...",
         "Expiration": exp.isoformat(),
     }
