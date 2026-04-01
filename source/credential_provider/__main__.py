@@ -777,7 +777,7 @@ class MultiProviderAuth:
         private_key = serialization.load_pem_private_key(key_pem, password=None)
 
         # SHA-1 thumbprint of the DER-encoded certificate (x5t header)
-        thumbprint = cert.fingerprint(hashes.SHA1())  # noqa: S303 # nosec B303 — required by OIDC spec
+        thumbprint = cert.fingerprint(hashes.SHA1())  # noqa: S303 # nosec B303 # nosemgrep: python.cryptography.security.insecure-hash-algorithms.insecure-hash-algorithm-sha1 — required by OIDC spec (x5t)
         x5t = base64.urlsafe_b64encode(thumbprint).rstrip(b"=").decode()
 
         now = int(time.time())
