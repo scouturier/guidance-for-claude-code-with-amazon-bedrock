@@ -208,6 +208,16 @@ class MultiProviderAuth:
             "max_session_duration", 43200 if profile_config.get("federation_type") == "direct" else 28800
         )
 
+        # Load client secret from OS keyring if configured for secret-based confidential client.
+        # The secret is never written to config.json; it lives only in the keyring.
+        if profile_config.get("azure_auth_mode") == "secret":
+            try:
+                secret = keyring.get_password("claude-code-with-bedrock", f"{self.profile}-client-secret")
+                if secret:
+                    profile_config["client_secret"] = secret
+            except Exception as e:
+                self._debug_print(f"Warning: could not read client secret from keyring: {e}")
+
         return profile_config
 
     def _detect_federation_type(self, config):
@@ -2000,8 +2010,42 @@ def main():
         action="store_true",
         help="Refresh credentials if expired (for cron jobs with session storage)",
     )
+    parser.add_argument(
+        "--set-client-secret",
+        nargs="?",
+        const=True,
+        default=None,
+        metavar="SECRET",
+        help="Store Azure AD client secret in OS secure storage (omit value for interactive prompt; blank input clears it)",
+    )
 
     args = parser.parse_args()
+
+    # Handle --set-client-secret before loading full auth config
+    if args.set_client_secret is not None:
+        import getpass
+
+        if args.set_client_secret is True:
+            secret = getpass.getpass(
+                f"Enter client secret for profile '{args.profile}' (press Enter to clear): "
+            )
+        else:
+            secret = args.set_client_secret
+
+        try:
+            if not secret:
+                try:
+                    keyring.delete_password("claude-code-with-bedrock", f"{args.profile}-client-secret")
+                except Exception:
+                    pass
+                print(f"✓ Client secret cleared for profile '{args.profile}'", file=sys.stderr)
+            else:
+                keyring.set_password("claude-code-with-bedrock", f"{args.profile}-client-secret", secret)
+                print(f"✓ Client secret stored in OS secure storage for profile '{args.profile}'", file=sys.stderr)
+        except Exception as e:
+            print(f"Error managing client secret in keyring: {e}", file=sys.stderr)
+            sys.exit(1)
+        sys.exit(0)
 
     auth = MultiProviderAuth(profile=args.profile)
 

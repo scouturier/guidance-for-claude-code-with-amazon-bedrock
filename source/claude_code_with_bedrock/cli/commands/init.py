@@ -429,6 +429,14 @@ class InitCommand(Command):
                     ).ask()
                     if not client_secret:
                         return None
+                    import keyring as _keyring
+                    _keyring.set_password("claude-code-with-bedrock", f"{profile_name}-client-secret", client_secret)
+                    console.print("[dim]  ✓ Client secret stored in OS secure storage (not written to config)[/dim]")
+                    console.print(
+                        "[dim]  Distribute to end users: they must run[/dim]\n"
+                        "[dim]    credential-process --set-client-secret --profile <profile>[/dim]\n"
+                        "[dim]  to store the secret on their machine.[/dim]"
+                    )
 
                 elif auth_mode == "certificate":
                     console.print(
@@ -453,7 +461,7 @@ class InitCommand(Command):
                         return None
 
                 config["azure_auth_mode"] = auth_mode
-                config["client_secret"] = client_secret
+                # client_secret is never written to config — it lives in the OS keyring
                 config["client_certificate_path"] = client_certificate_path
                 config["client_certificate_key_path"] = client_certificate_key_path
 
@@ -1528,7 +1536,7 @@ class InitCommand(Command):
             cognito_user_pool_id=config_data.get("cognito_user_pool_id"),
             federation_type=config_data.get("federation_type", "cognito"),
             max_session_duration=config_data.get("max_session_duration", 28800),
-            client_secret=config_data.get("client_secret"),
+            azure_auth_mode=config_data.get("azure_auth_mode"),
             client_certificate_path=config_data.get("client_certificate_path"),
             client_certificate_key_path=config_data.get("client_certificate_key_path"),
             enable_codebuild=config_data.get("codebuild", {}).get("enabled", False),
@@ -1865,11 +1873,10 @@ class InitCommand(Command):
                 existing_config["analytics"] = {"enabled": profile.analytics_enabled}
 
             # Preserve confidential client configuration if present
-            if getattr(profile, "client_secret", None):
-                existing_config["azure_auth_mode"] = "secret"
-                existing_config["client_secret"] = profile.client_secret
-            elif getattr(profile, "client_certificate_path", None):
-                existing_config["azure_auth_mode"] = "certificate"
+            # client_secret is never written to config — it lives in the OS keyring
+            if getattr(profile, "azure_auth_mode", None):
+                existing_config["azure_auth_mode"] = profile.azure_auth_mode
+            if getattr(profile, "client_certificate_path", None):
                 existing_config["client_certificate_path"] = profile.client_certificate_path
                 existing_config["client_certificate_key_path"] = profile.client_certificate_key_path
 

@@ -118,9 +118,36 @@ Enterprise Entra ID tenants often prohibit public client flows. The credential p
 3. Set a description (e.g. `ccwb-credential-provider`) and an expiry
 4. Click **Add** and **copy the secret value immediately** — it is not shown again
 
-When `ccwb init` asks for the Azure authentication mode, select **Confidential client — client secret** and paste the value.
+When `ccwb init` asks for the Azure authentication mode, select **Confidential client — client secret** and paste the value. The secret is stored securely in the **OS secure storage** (keyring) on the admin machine.
 
-> **Security note**: The secret is stored in plaintext in `config.json`. Use the certificate option for production deployments.
+#### Distributing to end users
+
+The client secret is a **shared app secret** — every user of the app uses the same value. After installing the dist package, each user must run the following command once to store it on their machine:
+
+```bash
+# macOS / Linux
+~/claude-code-with-bedrock/credential-process --set-client-secret --profile ClaudeCode
+
+# Windows
+%USERPROFILE%\claude-code-with-bedrock\credential-process.exe --set-client-secret --profile ClaudeCode
+```
+
+The user is prompted to enter the secret interactively. For automated or MDM-based deployments, pass the value directly:
+
+```bash
+~/claude-code-with-bedrock/credential-process --set-client-secret "the-secret-value" --profile ClaudeCode
+```
+
+#### Rotating the secret
+
+When you rotate the secret in Entra ID, re-run `ccwb init` on the admin machine and repeat the `--set-client-secret` command on each user machine (or push it via MDM).
+
+To clear a stored secret from a machine:
+
+```bash
+~/claude-code-with-bedrock/credential-process --set-client-secret --profile ClaudeCode
+# press Enter without typing a value
+```
 
 ---
 
@@ -214,7 +241,7 @@ You now have everything needed for deployment:
 |---|---|---|
 | **Provider Domain** | Your tenant URL | `login.microsoftonline.com/{tenant-id}/v2.0` |
 | **Client ID** | Your Application ID | `12345678-1234-1234-1234-123456789012` |
-| **Client secret** *(if using Option A)* | Secret value from Step 5A | `abc123~...` |
+| **Client secret** *(if using Option A)* | Secret value from Step 5A | *(entered interactively during `ccwb init`)* |
 | **Certificate path** *(if using Option B)* | Path to `cert.pem` on user machine | `~/claude-code-with-bedrock/cert.pem` |
 | **Key path** *(if using Option B)* | Path to `key.pem` on user machine | `~/claude-code-with-bedrock/key.pem` |
 
@@ -341,7 +368,7 @@ Once you've completed this setup:
 
 1. **Authentication mode**:
    - Use **certificate-based confidential client** for production — no long-lived secret is stored
-   - If using a client secret, rotate it regularly and treat `config.json` as a sensitive file
+   - If using a client secret, rotate it in Entra ID and re-run `--set-client-secret` on each user machine
    - Public client flows are acceptable for personal or dev tenants where enterprise policy allows it
 
 2. **Token Settings**:

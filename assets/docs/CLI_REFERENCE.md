@@ -325,6 +325,33 @@ This ensures that packaging always works, even if some optional platforms are no
 - Includes Claude Code telemetry settings (if monitoring enabled)
 - Configures environment variables for model selection (ANTHROPIC_MODEL, ANTHROPIC_SMALL_FAST_MODEL)
 
+**Credential process binary flags (for end users):**
+
+The distributed `credential-process` binary accepts the following flags directly:
+
+| Flag | Description |
+|---|---|
+| `--profile, -p <name>` | Profile to use (default: `ClaudeCode`, or `$CCWB_PROFILE`) |
+| `--clear-cache` | Clear cached credentials and force re-authentication |
+| `--check-expiration` | Exit 0 if credentials valid, 1 if expired |
+| `--refresh-if-needed` | Refresh credentials if expired (session storage mode only) |
+| `--get-monitoring-token` | Return cached OIDC monitoring token |
+| `--set-client-secret [VALUE]` | Store Azure AD client secret in OS secure storage. Omit `VALUE` for interactive prompt. Pass an empty string or press Enter at the prompt to clear the stored secret. |
+
+**`--set-client-secret` usage examples:**
+
+```bash
+# Interactive (prompts for secret):
+~/claude-code-with-bedrock/credential-process --set-client-secret --profile ClaudeCode
+
+# Non-interactive (MDM/scripted deployment):
+~/claude-code-with-bedrock/credential-process --set-client-secret "my-secret-value" --profile ClaudeCode
+
+# Clear a stored secret:
+~/claude-code-with-bedrock/credential-process --set-client-secret --profile ClaudeCode
+# (press Enter without typing a value)
+```
+
 **Output structure:**
 
 ```

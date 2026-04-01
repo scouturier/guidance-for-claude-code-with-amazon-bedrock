@@ -1707,12 +1707,14 @@ RUN pyinstaller \
         if hasattr(profile, "selected_model") and profile.selected_model:
             config[profile_name]["selected_model"] = profile.selected_model
 
-        # Add confidential client fields for Azure AD if present
+        # Add confidential client fields for Azure AD if present.
+        # client_secret is never written to config.json — it lives in the OS keyring.
+        # End users set it with: credential-process --set-client-secret --profile <profile>
+        if getattr(profile, "azure_auth_mode", None):
+            config[profile_name]["azure_auth_mode"] = profile.azure_auth_mode
         if getattr(profile, "client_certificate_path", None):
             config[profile_name]["client_certificate_path"] = profile.client_certificate_path
             config[profile_name]["client_certificate_key_path"] = profile.client_certificate_key_path
-        elif getattr(profile, "client_secret", None):
-            config[profile_name]["client_secret"] = profile.client_secret
 
         config_path = output_dir / "config.json"
         with open(config_path, "w") as f:

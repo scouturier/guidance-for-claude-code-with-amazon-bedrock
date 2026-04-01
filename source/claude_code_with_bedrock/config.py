@@ -72,10 +72,12 @@ class Profile:
 
     # Confidential client authentication (Azure AD / Entra ID)
     # If neither is set, public client flow is used (current default).
-    # If client_secret is set, confidential client with secret is used.
-    # If client_certificate_path + client_certificate_key_path are set,
-    # certificate-based confidential client (signed JWT assertion) is used.
-    client_secret: str | None = None  # OIDC client secret (confidential client)
+    # If azure_auth_mode == "secret", the client secret is stored in the OS keyring
+    #   (never in config.json). Read at runtime via keyring by the credential provider.
+    # If azure_auth_mode == "certificate", certificate paths are stored in config.json
+    #   and used to build a signed JWT assertion.
+    azure_auth_mode: str | None = None  # "public", "secret", or "certificate"
+    client_secret: str | None = None  # In-memory only — loaded from OS keyring at runtime
     client_certificate_path: str | None = None  # Path to PEM certificate file
     client_certificate_key_path: str | None = None  # Path to PEM private key file
 

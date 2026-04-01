@@ -187,10 +187,11 @@ class TestCommand(Command):
 
             # Display Azure AD authentication mode if applicable
             if profile_config.get("provider_type") == "azure":
-                if profile_config.get("client_certificate_path"):
+                azure_auth_mode = profile_config.get("azure_auth_mode", "public")
+                if azure_auth_mode == "certificate":
                     auth_mode_display = "Certificate (confidential client)"
-                elif profile_config.get("client_secret"):
-                    auth_mode_display = "Client Secret (confidential client)"
+                elif azure_auth_mode == "secret":
+                    auth_mode_display = "Client Secret (confidential client — secret in OS keyring)"
                 else:
                     auth_mode_display = "Public client"
                 console.print(f"[dim]  - Azure Auth Mode: {auth_mode_display}[/dim]")
