@@ -71,15 +71,31 @@ After registration, save these values:
 
 ### Step 4.1: Add Platform
 
+The platform type you select here controls whether Azure AD enforces confidential client authentication. **Choose based on your intended auth mode:**
+
+#### Public client (personal / dev tenant)
+
 1. In your app registration, click **Authentication**
 2. Click **+ Add a platform**
 3. Select **Mobile and desktop applications**
-4. Check **Add a custom redirect URI**
-5. Enter exactly:
+4. Check **Add a custom redirect URI** and enter exactly:
    ```
    http://localhost:8400/callback
    ```
-6. Click **Configure**
+5. Click **Configure**
+
+#### Confidential client (enterprise — secret or certificate)
+
+1. In your app registration, click **Authentication**
+2. Click **+ Add a platform**
+3. Select **Web**
+4. Under **Redirect URIs**, enter exactly:
+   ```
+   http://localhost:8400/callback
+   ```
+5. Click **Configure**
+
+> **Important**: Using **Mobile and desktop applications** with a confidential client mode will cause Azure AD to silently skip client credential enforcement — the flow will appear to succeed even without a valid secret or certificate. Always use **Web** for confidential client setups.
 
 ### Step 4.2: Public Client vs. Confidential Client
 
@@ -286,8 +302,8 @@ Select the mode matching your setup in Section 4–5. The wizard will prompt for
 1. Go back to your app registration
 2. Click **Authentication**
 3. Verify:
-   - Platform: Mobile and desktop applications
-   - Redirect URI: `http://localhost:8400/callback`
+   - Platform: **Mobile and desktop applications** (public client) or **Web** (confidential client)
+   - Redirect URI: `http://localhost:8400/callback` under the correct platform
    - Public client flows: matches your chosen mode (enabled for public, disabled for confidential)
 
 For confidential client with certificate, also verify:
@@ -306,6 +322,16 @@ Should return a JSON response with OIDC configuration.
 ---
 
 ## Troubleshooting
+
+### Confidential client auth succeeds but secret or certificate is not actually validated
+
+**Symptom**: Authentication appears to succeed even when the client secret is wrong or the certificate is not registered in Entra ID. Claude Code then fails to obtain AWS credentials.
+
+**Cause**: The redirect URI is registered under the **Mobile and desktop applications** platform. This marks the app as a public client in Azure AD, which skips client credential enforcement entirely.
+
+**Fix**: In your app registration → **Authentication**, remove the redirect URI from the Mobile and desktop applications platform and re-add it under **Web** (see [Step 4.1](#step-41-add-platform)). Then ensure **Allow public client flows** is set to **No**.
+
+---
 
 ### "Reply URL does not match" Error
 
