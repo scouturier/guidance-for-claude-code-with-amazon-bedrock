@@ -184,6 +184,17 @@ class TestCommand(Command):
             # Display configuration
             console.print("\n[bold]Configuration:[/bold]")
             console.print(f"[dim]  - Provider: {profile_config.get('provider_domain', 'unknown')}[/dim]")
+
+            # Display Azure AD authentication mode if applicable
+            if profile_config.get("provider_type") == "azure":
+                if profile_config.get("client_certificate_path"):
+                    auth_mode_display = "Certificate (confidential client)"
+                elif profile_config.get("client_secret"):
+                    auth_mode_display = "Client Secret (confidential client)"
+                else:
+                    auth_mode_display = "Public client"
+                console.print(f"[dim]  - Azure Auth Mode: {auth_mode_display}[/dim]")
+
             console.print(f"[dim]  - AWS Region: {profile_config.get('aws_region', 'unknown')}[/dim]")
 
             # Check credential storage

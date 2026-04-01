@@ -1707,6 +1707,13 @@ RUN pyinstaller \
         if hasattr(profile, "selected_model") and profile.selected_model:
             config[profile_name]["selected_model"] = profile.selected_model
 
+        # Add confidential client fields for Azure AD if present
+        if getattr(profile, "client_certificate_path", None):
+            config[profile_name]["client_certificate_path"] = profile.client_certificate_path
+            config[profile_name]["client_certificate_key_path"] = profile.client_certificate_key_path
+        elif getattr(profile, "client_secret", None):
+            config[profile_name]["client_secret"] = profile.client_secret
+
         config_path = output_dir / "config.json"
         with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
