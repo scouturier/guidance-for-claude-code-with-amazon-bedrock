@@ -345,7 +345,7 @@ The distributed `credential-process` binary accepts the following flags directly
 ~/claude-code-with-bedrock/credential-process --set-client-secret --profile ClaudeCode
 
 # Non-interactive (MDM/scripted deployment) — avoids secret appearing in shell history:
-CCWB_CLIENT_SECRET="my-secret-value" ~/claude-code-with-bedrock/credential-process --set-client-secret --profile ClaudeCode
+CCWB_CLIENT_SECRET=<your-client-secret> ~/claude-code-with-bedrock/credential-process --set-client-secret --profile ClaudeCode
 
 # Clear a stored secret:
 ~/claude-code-with-bedrock/credential-process --set-client-secret --profile ClaudeCode

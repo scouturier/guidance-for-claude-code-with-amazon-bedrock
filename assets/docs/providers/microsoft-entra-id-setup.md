@@ -151,7 +151,7 @@ The client secret is a **shared app secret** — every user of the app uses the 
 The user is prompted to enter the secret interactively. For automated or MDM-based deployments, set the `CCWB_CLIENT_SECRET` environment variable before running the command — this avoids the secret appearing in shell history or process listings:
 
 ```bash
-CCWB_CLIENT_SECRET="the-secret-value" ~/claude-code-with-bedrock/credential-process --set-client-secret --profile ClaudeCode
+CCWB_CLIENT_SECRET=<your-client-secret> ~/claude-code-with-bedrock/credential-process --set-client-secret --profile ClaudeCode
 ```
 
 #### Rotating the secret
