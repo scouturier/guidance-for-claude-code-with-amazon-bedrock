@@ -767,8 +767,28 @@ class MultiProviderAuth:
         from cryptography.hazmat.primitives import hashes, serialization
         from cryptography.hazmat.primitives.asymmetric import padding
 
-        cert_path = Path(self.config["client_certificate_path"]).expanduser()
-        key_path = Path(self.config["client_certificate_key_path"]).expanduser()
+        # Env vars take precedence over config.json so paths stay portable across
+        # machines (self-install and admin-push scenarios).  This follows the
+        # Azure SDK convention for AZURE_CLIENT_CERTIFICATE_PATH.
+        cert_path = Path(
+            os.environ.get("AZURE_CLIENT_CERTIFICATE_PATH") or self.config["client_certificate_path"]
+        ).expanduser()
+        key_path = Path(
+            os.environ.get("AZURE_CLIENT_CERTIFICATE_KEY_PATH") or self.config["client_certificate_key_path"]
+        ).expanduser()
+
+        if not cert_path.exists():
+            raise FileNotFoundError(
+                f"Certificate file not found: {cert_path}\n"
+                "Set the AZURE_CLIENT_CERTIFICATE_PATH environment variable to the correct path, "
+                "or update 'client_certificate_path' in config.json."
+            )
+        if not key_path.exists():
+            raise FileNotFoundError(
+                f"Private key file not found: {key_path}\n"
+                "Set the AZURE_CLIENT_CERTIFICATE_KEY_PATH environment variable to the correct path, "
+                "or update 'client_certificate_key_path' in config.json."
+            )
 
         cert_pem = cert_path.read_bytes()
         key_pem = key_path.read_bytes()
@@ -895,6 +915,19 @@ class MultiProviderAuth:
             token_data["client_assertion"] = self._build_client_assertion(token_url)
         elif self.config.get("client_secret"):
             token_data["client_secret"] = self.config["client_secret"]
+        else:
+            azure_auth_mode = self.config.get("azure_auth_mode")
+            if azure_auth_mode == "certificate":
+                raise ValueError(
+                    "azure_auth_mode is 'certificate' but no certificate paths are configured. "
+                    "Set AZURE_CLIENT_CERTIFICATE_PATH and AZURE_CLIENT_CERTIFICATE_KEY_PATH, "
+                    "or update 'client_certificate_path' and 'client_certificate_key_path' in config.json."
+                )
+            if azure_auth_mode == "secret":
+                raise ValueError(
+                    "azure_auth_mode is 'secret' but no client secret is stored. "
+                    f"Run: credential-process --set-client-secret --profile {self.profile}"
+                )
 
         token_response = requests.post(
             token_url,
@@ -2012,25 +2045,34 @@ def main():
     )
     parser.add_argument(
         "--set-client-secret",
-        nargs="?",
-        const=True,
-        default=None,
-        metavar="SECRET",
-        help="Store Azure AD client secret in OS secure storage (omit value for interactive prompt; blank input clears it)",
+        action="store_true",
+        default=False,
+        help=(
+            "Store Azure AD client secret in OS secure storage. "
+            "For non-interactive use set CCWB_CLIENT_SECRET env var before running; "
+            "otherwise an interactive prompt is shown. Blank input clears the stored secret."
+        ),
     )
 
     args = parser.parse_args()
 
-    # Handle --set-client-secret before loading full auth config
-    if args.set_client_secret is not None:
+    # Handle --set-client-secret before loading full auth config.
+    # Secrets must never be passed as CLI arguments — they appear in shell history
+    # and process listings.  Use CCWB_CLIENT_SECRET env var for automation, or
+    # the interactive getpass prompt for manual setup.
+    if args.set_client_secret:
         import getpass
 
-        if args.set_client_secret is True:
+        env_secret = os.environ.get("CCWB_CLIENT_SECRET")
+        if env_secret is not None:
+            if not env_secret:
+                print("Error: CCWB_CLIENT_SECRET is set but empty.", file=sys.stderr)
+                sys.exit(1)
+            secret = env_secret
+        else:
             secret = getpass.getpass(
                 f"Enter client secret for profile '{args.profile}' (press Enter to clear): "
             )
-        else:
-            secret = args.set_client_secret
 
         try:
             if not secret:
