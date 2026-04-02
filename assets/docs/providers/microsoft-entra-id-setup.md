@@ -148,10 +148,10 @@ The client secret is a **shared app secret** — every user of the app uses the 
 %USERPROFILE%\claude-code-with-bedrock\credential-process.exe --set-client-secret --profile ClaudeCode
 ```
 
-The user is prompted to enter the secret interactively. For automated or MDM-based deployments, pass the value directly:
+The user is prompted to enter the secret interactively. For automated or MDM-based deployments, set the `CCWB_CLIENT_SECRET` environment variable before running the command — this avoids the secret appearing in shell history or process listings:
 
 ```bash
-~/claude-code-with-bedrock/credential-process --set-client-secret "the-secret-value" --profile ClaudeCode
+CCWB_CLIENT_SECRET="the-secret-value" ~/claude-code-with-bedrock/credential-process --set-client-secret --profile ClaudeCode
 ```
 
 #### Rotating the secret
@@ -207,6 +207,24 @@ Decide on consistent paths for your deployment, for example:
 - Windows: `%USERPROFILE%\claude-code-with-bedrock\cert.pem`
 
 You will enter these paths when running `ccwb init`.
+
+> **Note on absolute paths**: If you enter absolute paths during `ccwb init`, the `ccwb package` command will warn you that those paths are machine-specific and may not resolve on end-user machines with a different install layout. Prefer paths relative to the home directory (e.g. `~/claude-code-with-bedrock/cert.pem`) where possible.
+
+#### Step 5.5: Override certificate paths on end-user machines (if needed)
+
+If the paths recorded in `config.json` don't match the actual file locations on a user's machine, the user (or an MDM system) can override them at runtime without editing `config.json`:
+
+```bash
+# macOS / Linux — set in the shell or via a launch agent:
+export AZURE_CLIENT_CERTIFICATE_PATH=~/certs/cert.pem
+export AZURE_CLIENT_CERTIFICATE_KEY_PATH=~/certs/key.pem
+
+# Windows — set as user or system environment variables:
+# AZURE_CLIENT_CERTIFICATE_PATH = C:\Users\<name>\certs\cert.pem
+# AZURE_CLIENT_CERTIFICATE_KEY_PATH = C:\Users\<name>\certs\key.pem
+```
+
+These env vars take precedence over the paths in `config.json` and follow the same convention as the Azure SDK.
 
 ---
 
@@ -367,8 +385,9 @@ This error occurs during deployment if the tenant ID format is incorrect. The fi
 
 ### "Certificate or key file not found" Error
 
-- Verify the paths in `config.json` match the actual file locations
+- Verify the paths in `config.json` match the actual file locations on this machine
 - On macOS/Linux, paths starting with `~/` are expanded automatically
+- If the paths differ from what was set during `ccwb init`, set `AZURE_CLIENT_CERTIFICATE_PATH` and `AZURE_CLIENT_CERTIFICATE_KEY_PATH` environment variables to override them without editing `config.json` (see [Step 5.5](#step-55-override-certificate-paths-on-end-user-machines-if-needed))
 - Check file permissions: the credential provider process must be able to read both files
 
 ---

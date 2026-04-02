@@ -336,7 +336,7 @@ The distributed `credential-process` binary accepts the following flags directly
 | `--check-expiration` | Exit 0 if credentials valid, 1 if expired |
 | `--refresh-if-needed` | Refresh credentials if expired (session storage mode only) |
 | `--get-monitoring-token` | Return cached OIDC monitoring token |
-| `--set-client-secret [VALUE]` | Store Azure AD client secret in OS secure storage. Omit `VALUE` for interactive prompt. Pass an empty string or press Enter at the prompt to clear the stored secret. |
+| `--set-client-secret` | Store Azure AD client secret in OS secure storage. Uses an interactive prompt by default; set `CCWB_CLIENT_SECRET` env var for non-interactive use. Press Enter at the prompt (or set the env var to an empty string) to clear the stored secret. |
 
 **`--set-client-secret` usage examples:**
 
@@ -344,12 +344,28 @@ The distributed `credential-process` binary accepts the following flags directly
 # Interactive (prompts for secret):
 ~/claude-code-with-bedrock/credential-process --set-client-secret --profile ClaudeCode
 
-# Non-interactive (MDM/scripted deployment):
-~/claude-code-with-bedrock/credential-process --set-client-secret "my-secret-value" --profile ClaudeCode
+# Non-interactive (MDM/scripted deployment) — avoids secret appearing in shell history:
+CCWB_CLIENT_SECRET="my-secret-value" ~/claude-code-with-bedrock/credential-process --set-client-secret --profile ClaudeCode
 
 # Clear a stored secret:
 ~/claude-code-with-bedrock/credential-process --set-client-secret --profile ClaudeCode
 # (press Enter without typing a value)
+```
+
+**Certificate path environment variables (confidential client — certificate mode):**
+
+When certificate paths recorded in `config.json` are absolute, they may not resolve on end-user machines with a different install layout. Set these env vars to override the paths stored in `config.json` at runtime:
+
+| Environment variable | Description |
+|---|---|
+| `AZURE_CLIENT_CERTIFICATE_PATH` | Path to the PEM certificate file. Overrides `client_certificate_path` in `config.json`. |
+| `AZURE_CLIENT_CERTIFICATE_KEY_PATH` | Path to the PEM private key file. Overrides `client_certificate_key_path` in `config.json`. |
+
+```bash
+# Override certificate paths (e.g. via MDM launch agent environment):
+AZURE_CLIENT_CERTIFICATE_PATH=~/certs/cert.pem \
+AZURE_CLIENT_CERTIFICATE_KEY_PATH=~/certs/key.pem \
+~/claude-code-with-bedrock/credential-process --profile ClaudeCode
 ```
 
 **Output structure:**
