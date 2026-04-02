@@ -24,7 +24,7 @@ AWS_REGIONS = {
     "eu-south-1",
     "eu-south-2",
     "ap-south-1",
-    "ap-south-5",
+    "ap-south-2",
     "ap-northeast-1",
     "ap-northeast-2",
     "ap-northeast-3",

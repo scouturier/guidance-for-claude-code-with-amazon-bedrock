@@ -377,7 +377,7 @@ CLAUDE_MODELS = {
                     "ap-northeast-2",  # Seoul
                     "ap-northeast-3",  # Osaka
                     "ap-south-1",  # Mumbai
-                    "ap-south-5",  # Hyderabad
+                    "ap-south-2",  # Hyderabad
                     "ap-southeast-1",  # Singapore
                     "ap-southeast-4",  # Melbourne
                     "ap-southeast-2",  # Sydney
@@ -406,7 +406,7 @@ CLAUDE_MODELS = {
                     "ap-northeast-2",
                     "ap-northeast-3",
                     "ap-south-1",
-                    "ap-south-5",
+                    "ap-south-2",
                     "ap-southeast-1",
                     "ap-southeast-4",
                     "ap-southeast-2",
