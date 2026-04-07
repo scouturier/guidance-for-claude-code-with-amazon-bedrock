@@ -796,9 +796,10 @@ class MultiProviderAuth:
         cert = x509.load_pem_x509_certificate(cert_pem)
         private_key = serialization.load_pem_private_key(key_pem, password=None)
 
-        # SHA-1 thumbprint of the DER-encoded certificate (x5t header)
-        thumbprint = cert.fingerprint(hashes.SHA1())  # noqa: S303 # nosec B303 # nosemgrep: python.cryptography.security.insecure-hash-algorithms.insecure-hash-algorithm-sha1 — required by OIDC spec (x5t)
-        x5t = base64.urlsafe_b64encode(thumbprint).rstrip(b"=").decode()
+        # SHA-256 thumbprint of the DER-encoded certificate (x5t#S256 header)
+        # Per Microsoft Entra ID recommendation: https://learn.microsoft.com/en-us/entra/identity-platform/certificate-credentials
+        thumbprint = cert.fingerprint(hashes.SHA256())
+        x5t_s256 = base64.urlsafe_b64encode(thumbprint).rstrip(b"=").decode()
 
         now = int(time.time())
         payload = {
@@ -811,12 +812,12 @@ class MultiProviderAuth:
             "exp": now + 300,  # 5-minute lifetime
         }
 
-        # PyJWT encodes using the private key; headers must include x5t
+        # PyJWT encodes using the private key; headers must include x5t#S256
         token = jwt.encode(
             payload,
             private_key,
-            algorithm="RS256",
-            headers={"x5t": x5t},
+            algorithm="PS256",
+            headers={"x5t#S256": x5t_s256},
         )
         return token
 
