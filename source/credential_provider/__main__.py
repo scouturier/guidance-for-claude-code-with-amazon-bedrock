@@ -2079,8 +2079,8 @@ def main():
             if not secret:
                 try:
                     keyring.delete_password("claude-code-with-bedrock", f"{args.profile}-client-secret")
-                except Exception:
-                    pass
+                except keyring.errors.PasswordDeleteError:
+                    pass  # Secret already absent, nothing to clear
                 print(f"✓ Client secret cleared for profile '{args.profile}'", file=sys.stderr)
             else:
                 keyring.set_password("claude-code-with-bedrock", f"{args.profile}-client-secret", secret)
