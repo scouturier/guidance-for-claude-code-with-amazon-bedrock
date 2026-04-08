@@ -397,6 +397,74 @@ class InitCommand(Command):
             if not client_id:
                 return None
 
+            # Confidential client configuration (Azure AD / Entra ID only)
+            client_secret = None
+            client_certificate_path = None
+            client_certificate_key_path = None
+
+            if provider_type == "azure":
+                console.print("\n[bold]Azure AD Authentication Mode[/bold]")
+                console.print(
+                    "Some enterprise Entra ID tenants disable public client flows.\n"
+                    "If yours does, configure a confidential client here.\n"
+                )
+
+                auth_mode = questionary.select(
+                    "Select authentication mode:",
+                    choices=[
+                        questionary.Choice("Public client (default, no secret required)", value="public"),
+                        questionary.Choice("Confidential client — client secret", value="secret"),
+                        questionary.Choice("Confidential client — certificate (recommended for enterprise)", value="certificate"),
+                    ],
+                    default=config.get("azure_auth_mode", "public"),
+                ).ask()
+
+                if not auth_mode:
+                    return None
+
+                if auth_mode == "secret":
+                    client_secret = questionary.password(
+                        "Enter your client secret:",
+                        validate=lambda x: bool(x) or "Client secret cannot be empty",
+                    ).ask()
+                    if not client_secret:
+                        return None
+                    import keyring as _keyring
+                    _keyring.set_password("claude-code-with-bedrock", f"{profile_name}-client-secret", client_secret)
+                    console.print("[dim]  ✓ Client secret stored in OS secure storage (not written to config)[/dim]")
+                    console.print(
+                        "[dim]  Distribute to end users: they must run[/dim]\n"
+                        "[dim]    credential-process --set-client-secret --profile <profile>[/dim]\n"
+                        "[dim]  to store the secret on their machine.[/dim]"
+                    )
+
+                elif auth_mode == "certificate":
+                    console.print(
+                        "\n[dim]Generate a self-signed cert with:[/dim]\n"
+                        "[dim]  openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes[/dim]\n"
+                        "[dim]Then upload cert.pem to your app registration → Certificates & secrets.[/dim]\n"
+                    )
+                    client_certificate_path = questionary.text(
+                        "Path to certificate PEM file:",
+                        validate=lambda x: bool(x) or "Certificate path cannot be empty",
+                        default=config.get("client_certificate_path", ""),
+                    ).ask()
+                    if not client_certificate_path:
+                        return None
+
+                    client_certificate_key_path = questionary.text(
+                        "Path to private key PEM file:",
+                        validate=lambda x: bool(x) or "Key path cannot be empty",
+                        default=config.get("client_certificate_key_path", ""),
+                    ).ask()
+                    if not client_certificate_key_path:
+                        return None
+
+                config["azure_auth_mode"] = auth_mode
+                # client_secret is never written to config — it lives in the OS keyring
+                config["client_certificate_path"] = client_certificate_path
+                config["client_certificate_key_path"] = client_certificate_key_path
+
             # Credential Storage Method
             console.print("\n[bold]Credential Storage Method[/bold]")
             console.print("Choose how to store AWS credentials locally:")
@@ -1468,6 +1536,9 @@ class InitCommand(Command):
             cognito_user_pool_id=config_data.get("cognito_user_pool_id"),
             federation_type=config_data.get("federation_type", "cognito"),
             max_session_duration=config_data.get("max_session_duration", 28800),
+            azure_auth_mode=config_data.get("azure_auth_mode"),
+            client_certificate_path=config_data.get("client_certificate_path"),
+            client_certificate_key_path=config_data.get("client_certificate_key_path"),
             enable_codebuild=config_data.get("codebuild", {}).get("enabled", False),
             enable_distribution=config_data.get("distribution", {}).get("enabled", False),
             distribution_type=config_data.get("distribution", {}).get("type"),
@@ -1800,6 +1871,14 @@ class InitCommand(Command):
             # Add analytics configuration if present
             if hasattr(profile, "analytics_enabled"):
                 existing_config["analytics"] = {"enabled": profile.analytics_enabled}
+
+            # Preserve confidential client configuration if present
+            # client_secret is never written to config — it lives in the OS keyring
+            if getattr(profile, "azure_auth_mode", None):
+                existing_config["azure_auth_mode"] = profile.azure_auth_mode
+            if getattr(profile, "client_certificate_path", None):
+                existing_config["client_certificate_path"] = profile.client_certificate_path
+                existing_config["client_certificate_key_path"] = profile.client_certificate_key_path
 
             # Add selected source region if present
             if hasattr(profile, "selected_source_region") and profile.selected_source_region:
