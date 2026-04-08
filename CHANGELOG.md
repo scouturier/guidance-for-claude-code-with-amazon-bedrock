@@ -37,6 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated Dependabot configuration
 - Dependency updates: requests, urllib3, filelock, virtualenv, github-actions
 
+## [2.2.0] - 2026-04-02
+
+### Changed
+
+- **Version sync**: Bumped `source/pyproject.toml` to 2.2.0 to align with
+  the published release tag (no feature or bug-fix changes from v2.1.0)
+
 ## [2.1.0] - 2026-03-20
 
 ### Fixed
