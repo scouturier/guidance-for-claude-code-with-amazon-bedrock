@@ -1708,6 +1708,12 @@ RUN pyinstaller \
         if hasattr(profile, "selected_model") and profile.selected_model:
             config[profile_name]["selected_model"] = profile.selected_model
 
+        # Add quota fields if configured
+        if getattr(profile, "quota_api_endpoint", None):
+            config[profile_name]["quota_api_endpoint"] = profile.quota_api_endpoint
+            config[profile_name]["quota_check_interval"] = profile.quota_check_interval
+            config[profile_name]["quota_fail_mode"] = profile.quota_fail_mode
+
         # Add confidential client fields for Azure AD if present.
         # client_secret is never written to config.json — it lives in the OS keyring.
         # End users set it with: credential-process --set-client-secret --profile <profile>
