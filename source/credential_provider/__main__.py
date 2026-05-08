@@ -13,6 +13,7 @@ import html as html_module
 import json
 import os
 import platform
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import re
 import secrets
 import socket
@@ -334,7 +335,88 @@ class MultiProviderAuth:
             # Session-based storage uses temporary files
             self.cache_dir = Path.home() / "claude-code-with-bedrock" / "cache"
             self.cache_dir.mkdir(parents=True, exist_ok=True)
-        # For keyring, no directory setup needed
+        elif self.credential_storage == "keyring" and platform.system() == "Windows":
+            # On Windows with keyring mode, maintain a DPAPI-encrypted fast cache file
+            # alongside the keyring entries. credential_process is a short-lived binary
+            # invoked on every AWS API call — without this cache every call would hit
+            # Windows Credential Manager (10-15s on enterprise systems), causing timeouts.
+            # DPAPI ties the file to the current Windows user account, providing the same
+            # security guarantee as Windows Credential Manager itself.
+            self.win_cache_dir = Path.home() / "claude-code-with-bedrock" / "cache"
+            self.win_cache_dir.mkdir(parents=True, exist_ok=True)
+
+    def _win_cache_path(self):
+        """Return path to the DPAPI-encrypted fast credential cache file."""
+        safe_profile = self.profile.replace("/", "_").replace("\\", "_")
+        return self.win_cache_dir / f"{safe_profile}.dpapi"
+
+    def _dpapi_encrypt(self, plaintext: str) -> bytes:
+        """Encrypt a string with DPAPI (user-scope). Requires pywin32."""
+        import win32crypt
+        return win32crypt.CryptProtectData(
+            plaintext.encode("utf-8"),
+            None, None, None, None,
+            0x04,  # CRYPTPROTECT_LOCAL_MACHINE=0, user-scope
+        )
+
+    def _dpapi_decrypt(self, ciphertext: bytes) -> str:
+        """Decrypt DPAPI-encrypted bytes. Returns plaintext string."""
+        import win32crypt
+        _, plaintext = win32crypt.CryptUnprotectData(ciphertext, None, None, None, 0)
+        return plaintext.decode("utf-8")
+
+    def _read_win_cache(self):
+        """Read credentials from DPAPI-encrypted fast cache. Returns dict or None."""
+        try:
+            path = self._win_cache_path()
+            if not path.exists():
+                return None
+            ciphertext = path.read_bytes()
+            plaintext = self._dpapi_decrypt(ciphertext)
+            creds = json.loads(plaintext)
+
+            # Validate expiration
+            exp_str = creds.get("Expiration")
+            if not exp_str:
+                return None
+            exp_time = datetime.fromisoformat(exp_str.replace("Z", "+00:00"))
+            if (exp_time - datetime.now(timezone.utc)).total_seconds() > 30:
+                return creds
+            return None
+        except Exception as e:
+            self._debug_print(f"Win cache read failed: {e}")
+            return None
+
+    def _write_win_cache(self, credentials: dict):
+        """Write credentials to DPAPI-encrypted fast cache atomically."""
+        try:
+            import tempfile
+            path = self._win_cache_path()
+            ciphertext = self._dpapi_encrypt(json.dumps(credentials))
+            fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".cred.", suffix=".tmp")
+            try:
+                os.write(fd, ciphertext)
+                os.close(fd)
+                os.replace(tmp, path)
+            except Exception:
+                try:
+                    os.unlink(tmp)
+                except Exception:
+                    pass
+                raise
+            self._debug_print(f"Wrote DPAPI cache: {path}")
+        except Exception as e:
+            self._debug_print(f"Win cache write failed (non-fatal): {e}")
+
+    def _clear_win_cache(self):
+        """Delete the DPAPI-encrypted fast cache file if it exists."""
+        try:
+            path = self._win_cache_path()
+            if path.exists():
+                path.unlink()
+                self._debug_print(f"Cleared DPAPI cache: {path}")
+        except Exception as e:
+            self._debug_print(f"Win cache clear failed (non-fatal): {e}")
 
     def get_cached_credentials(self):
         """Retrieve valid credentials from configured storage"""
@@ -342,26 +424,105 @@ class MultiProviderAuth:
             try:
                 # On Windows, credentials are split into multiple entries due to size limits
                 if platform.system() == "Windows":
-                    # Retrieve split credentials
-                    keys_json = keyring.get_password("claude-code-with-bedrock", f"{self.profile}-keys")
-                    token1 = keyring.get_password("claude-code-with-bedrock", f"{self.profile}-token1")
-                    token2 = keyring.get_password("claude-code-with-bedrock", f"{self.profile}-token2")
-                    meta_json = keyring.get_password("claude-code-with-bedrock", f"{self.profile}-meta")
+                    # Fast path: DPAPI-encrypted file cache avoids hitting Windows Credential
+                    # Manager (10-15s per read on enterprise systems) on every AWS API call.
+                    # credential_process is a short-lived binary with no persistent memory,
+                    # so without this cache every boto3 call would trigger a 10-15s keyring read.
+                    cached = self._read_win_cache()
+                    if cached:
+                        self._debug_print("Served credentials from DPAPI fast cache")
+                        return cached
+                    # Windows Credential Manager has a 2560-byte (UTF-16LE) limit per
+                    # entry, so the SessionToken is split across two entries. The header
+                    # entry combines keys + metadata (172 bytes combined, well under limit)
+                    # to reduce round-trips from 4 to 3.
+                    #
+                    # Reads run in parallel via ThreadPoolExecutor to avoid sequential
+                    # Windows Credential Manager latency (10-15s per read on some enterprise
+                    # systems with GPO/smart-card enforcement).
+                    #
+                    # A SHA-256 hash of the full SessionToken is stored in the header entry
+                    # so we can detect torn reads caused by a concurrent save_credentials()
+                    # call between our parallel fetches.
+                    #
+                    # executor.map() result order matches input order — this is guaranteed
+                    # by the concurrent.futures spec and is load-bearing here.
+                    win_entries = [
+                        f"{self.profile}-header",  # keys + meta + token hash
+                        f"{self.profile}-token1",
+                        f"{self.profile}-token2",
+                    ]
+                    # Per-future timeout: must be shorter than botocore's credential_process
+                    # kill timeout (~30s for AWS CLI v2). At enterprise keyring latency of
+                    # 10-15s per read, 20s gives one full retry before the SDK kills us.
+                    _KEYRING_TIMEOUT_S = 20
 
-                    if not all([keys_json, token1, token2, meta_json]):
+                    def _fetch_all_entries():
+                        with ThreadPoolExecutor(max_workers=3) as executor:
+                            future_map = {
+                                executor.submit(
+                                    keyring.get_password, "claude-code-with-bedrock", e
+                                ): e
+                                for e in win_entries
+                            }
+                            results = {}
+                            try:
+                                for future in as_completed(future_map, timeout=_KEYRING_TIMEOUT_S):
+                                    results[future_map[future]] = future.result()
+                            except TimeoutError:
+                                print(
+                                    "Error: Windows Credential Manager did not respond within "
+                                    f"{_KEYRING_TIMEOUT_S}s. This may be caused by enterprise "
+                                    "GPO, smart-card enforcement, or a domain controller being "
+                                    "unreachable. Try again or contact your administrator.",
+                                    file=sys.stderr,
+                                )
+                                return None
+                            return results
+
+                    # Retry up to 2 times on torn reads (caused by a concurrent
+                    # save_credentials() writing new entries while we were reading).
+                    # Torn reads are transient — a second read after the write completes
+                    # will always see a consistent state.
+                    creds = None
+                    for attempt in range(3):
+                        results_by_entry = _fetch_all_entries()
+                        if results_by_entry is None:
+                            return None  # timeout — already printed error
+
+                        header_json = results_by_entry.get(f"{self.profile}-header")
+                        token1 = results_by_entry.get(f"{self.profile}-token1")
+                        token2 = results_by_entry.get(f"{self.profile}-token2")
+
+                        if not all([header_json, token1, token2]):
+                            return None
+
+                        header = json.loads(header_json)
+                        session_token = token1 + token2
+
+                        # Verify token hash to detect torn reads. Encoding must match
+                        # save_credentials() — both use .encode() (UTF-8).
+                        expected_hash = header.get("token_hash")
+                        if expected_hash:
+                            actual_hash = hashlib.sha256(session_token.encode()).hexdigest()
+                            if actual_hash != expected_hash:
+                                self._debug_print(
+                                    f"Torn read detected (attempt {attempt + 1}/3), "
+                                    "retrying after concurrent write"
+                                )
+                                continue  # retry
+
+                        creds = {
+                            "Version": header["Version"],
+                            "AccessKeyId": header["AccessKeyId"],
+                            "SecretAccessKey": header["SecretAccessKey"],
+                            "SessionToken": session_token,
+                            "Expiration": header["Expiration"],
+                        }
+                        break
+                    else:
+                        self._debug_print("Torn read persisted after 3 attempts, treating as cache miss")
                         return None
-
-                    # Reconstruct credentials
-                    keys = json.loads(keys_json)
-                    meta = json.loads(meta_json)
-
-                    creds = {
-                        "Version": meta["Version"],
-                        "AccessKeyId": keys["AccessKeyId"],
-                        "SecretAccessKey": keys["SecretAccessKey"],
-                        "SessionToken": token1 + token2,
-                        "Expiration": meta["Expiration"],
-                    }
                 else:
                     # Non-Windows: single entry storage
                     creds_json = keyring.get_password("claude-code-with-bedrock", f"{self.profile}-credentials")
@@ -385,6 +546,10 @@ class MultiProviderAuth:
 
                     # Use credentials if they expire in more than 30 seconds
                     if (exp_time - now).total_seconds() > 30:
+                        # Populate DPAPI fast cache so future credential_process invocations
+                        # don't need to hit Windows Credential Manager again.
+                        if platform.system() == "Windows":
+                            self._write_win_cache(creds)
                         return creds
 
             except Exception as e:
@@ -421,28 +586,43 @@ class MultiProviderAuth:
                 # On Windows, split credentials into multiple entries due to size limits
                 # Windows Credential Manager has a 2560 byte limit, but uses UTF-16LE encoding
                 if platform.system() == "Windows":
-                    # Split the SessionToken in half
+                    # Split the SessionToken in half (Windows Credential Manager 2560-byte limit)
                     token = credentials["SessionToken"]
                     mid = len(token) // 2
+                    token_hash = hashlib.sha256(token.encode()).hexdigest()
 
-                    # Store as 4 separate entries
+                    # Write token halves first, then the header that contains the hash.
+                    # A concurrent reader that sees the new header will always find the
+                    # new token halves already in place — this eliminates torn reads.
+                    # Both token halves are written in parallel since they're independent.
+                    with ThreadPoolExecutor(max_workers=2) as executor:
+                        f1 = executor.submit(
+                            keyring.set_password,
+                            "claude-code-with-bedrock", f"{self.profile}-token1", token[:mid],
+                        )
+                        f2 = executor.submit(
+                            keyring.set_password,
+                            "claude-code-with-bedrock", f"{self.profile}-token2", token[mid:],
+                        )
+                        f1.result()
+                        f2.result()
+
+                    # Header written last — combining keys + meta + token hash into one
+                    # entry reduces total round-trips from 4 to 3.
                     keyring.set_password(
                         "claude-code-with-bedrock",
-                        f"{self.profile}-keys",
-                        json.dumps(
-                            {
-                                "AccessKeyId": credentials["AccessKeyId"],
-                                "SecretAccessKey": credentials["SecretAccessKey"],
-                            }
-                        ),
+                        f"{self.profile}-header",
+                        json.dumps({
+                            "AccessKeyId": credentials["AccessKeyId"],
+                            "SecretAccessKey": credentials["SecretAccessKey"],
+                            "Version": credentials["Version"],
+                            "Expiration": credentials["Expiration"],
+                            "token_hash": token_hash,
+                        }),
                     )
-                    keyring.set_password("claude-code-with-bedrock", f"{self.profile}-token1", token[:mid])
-                    keyring.set_password("claude-code-with-bedrock", f"{self.profile}-token2", token[mid:])
-                    keyring.set_password(
-                        "claude-code-with-bedrock",
-                        f"{self.profile}-meta",
-                        json.dumps({"Version": credentials["Version"], "Expiration": credentials["Expiration"]}),
-                    )
+                    # Update fast cache so subsequent credential_process invocations
+                    # return immediately without hitting Windows Credential Manager.
+                    self._write_win_cache(credentials)
                 else:
                     # Non-Windows: store as single entry
                     keyring.set_password(
@@ -463,29 +643,29 @@ class MultiProviderAuth:
         # This maintains keychain access permissions on macOS
         try:
             if platform.system() == "Windows":
-                # On Windows, we have 4 separate entries to clear
-                entries_to_clear = [
-                    f"{self.profile}-keys",
-                    f"{self.profile}-token1",
-                    f"{self.profile}-token2",
-                    f"{self.profile}-meta",
-                ]
-
-                for entry in entries_to_clear:
+                # Write token halves first (EXPIRED), then header — same write ordering
+                # as save_credentials() to avoid torn reads during concurrent access.
+                # On Windows, set_password creates the entry if absent so no read-before-write needed.
+                expired_header = json.dumps({
+                    "AccessKeyId": "EXPIRED",
+                    "SecretAccessKey": "EXPIRED",
+                    "Version": 1,
+                    "Expiration": "2000-01-01T00:00:00Z",
+                    "token_hash": hashlib.sha256(b"EXPIREDEXPIRED").hexdigest(),
+                })
+                # Only overwrite entries that already exist. On Windows, set_password
+                # creates the entry if absent — writing "EXPIRED" to a non-existent entry
+                # would leave a truthy string that passes the all() guard in
+                # get_cached_credentials() and causes json.loads("EXPIRED") to crash.
+                for entry, value in [
+                    (f"{self.profile}-token1", "EXPIRED"),
+                    (f"{self.profile}-token2", "EXPIRED"),
+                    (f"{self.profile}-header", expired_header),
+                ]:
                     if keyring.get_password("claude-code-with-bedrock", entry):
-                        # Replace with expired dummy data
-                        if "keys" in entry:
-                            expired_data = json.dumps({"AccessKeyId": "EXPIRED", "SecretAccessKey": "EXPIRED"})
-                        elif "token" in entry:
-                            expired_data = "EXPIRED"
-                        elif "meta" in entry:
-                            expired_data = json.dumps({"Version": 1, "Expiration": "2000-01-01T00:00:00Z"})
-                        else:
-                            expired_data = "EXPIRED"
-
-                        keyring.set_password("claude-code-with-bedrock", entry, expired_data)
-
+                        keyring.set_password("claude-code-with-bedrock", entry, value)
                 cleared_items.append("keyring credentials (Windows)")
+                self._clear_win_cache()
             else:
                 # Non-Windows: single entry storage
                 if keyring.get_password("claude-code-with-bedrock", f"{self.profile}-credentials"):
